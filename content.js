@@ -10,8 +10,301 @@ import {
   IncidentType,
   IncidentSeverity 
 } from './content/financial-resilience-analyzer.js';
+import { reactFreezer } from './content/react-state-freezer.js';
+import { creditFreeze } from './content/credit-freeze.js';
 
 console.log('DX Edge Middleware - Financial Resilience Edition loaded');
+
+/**
+ * LOVABLE-SPECIFIC FREEZE MODULE
+ * Fortalece o freeze de créditos especificamente para a plataforma Lovable
+ */
+class LovableFreezeModule {
+  constructor() {
+    this.enabled = true;
+    this.freezeInterval = null;
+    this.domObserver = null;
+    this.fakeCreditsRemaining = 999999;
+    
+    // Carregar estado persistente
+    this.loadPersistedState();
+    
+    if (this.enabled) {
+      this.initialize();
+    }
+  }
+  
+  /**
+   * Inicializa módulo de freeze do Lovable
+   */
+  initialize() {
+    console.log('[LovableFreeze] Initializing enhanced freeze module...');
+    
+    // Instalar interceptores reforçados
+    this.installEnhancedFetchInterceptor();
+    this.installDOMFreeze();
+    this.installStorageFreeze();
+    
+    // Sync periódico
+    this.startPeriodicSync();
+    
+    console.log('[LovableFreeze] Enhanced freeze module active');
+  }
+  
+  /**
+   * Instala interceptor fetch reforçado para Lovable
+   */
+  installEnhancedFetchInterceptor() {
+    const self = this;
+    const originalFetch = window.fetch;
+    
+    window.fetch = async function(...args) {
+      const [url, options] = args;
+      const urlString = typeof url === 'string' ? url : url.url || url.href || '';
+      
+      // Verificar se é endpoint crítico do Lovable usando DataAuditInterceptor
+      const isCritical = window.LovableFreezeInterceptor?.isLovableCriticalEndpoint?.(urlString) || false;
+      
+      if (isCritical && self.enabled) {
+        console.log('[LovableFreeze] Intercepting critical endpoint:', urlString);
+        
+        try {
+          const response = await originalFetch.apply(this, args);
+          
+          // Modificar resposta se for JSON
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const data = await response.clone().json();
+            const frozenData = window.LovableFreezeInterceptor?.freezeCreditData?.(data) || data;
+            
+            return new Response(JSON.stringify(frozenData), {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers
+            });
+          }
+          
+          return response;
+          
+        } catch (error) {
+          // Se erro relacionado a créditos, retornar resposta fake
+          if (error.message?.includes('402') || error.message?.toLowerCase().includes('credit')) {
+            console.warn('[LovableFreeze] Credit error detected, returning fake response');
+            const fakeData = window.LovableFreezeInterceptor?.createFakeCreditResponse?.() || {};
+            return new Response(JSON.stringify(fakeData), {
+              status: 200,
+              statusText: 'OK',
+              headers: new Headers({ 'Content-Type': 'application/json' })
+            });
+          }
+          throw error;
+        }
+      }
+      
+      return originalFetch.apply(this, args);
+    };
+    
+    console.log('[LovableFreeze] Enhanced fetch interceptor installed');
+  }
+  
+  /**
+   * Instala freeze direto no DOM para elementos de créditos
+   */
+  installDOMFreeze() {
+    const self = this;
+    
+    // Seletores específicos do Lovable
+    const lovableSelectors = [
+      '[class*="credit"]',
+      '[class*="balance"]',
+      '[class*="quota"]',
+      '[class*="usage"]',
+      '[class*="billing"]',
+      '[data-testid*="credit"]',
+      '[aria-label*="credit"]',
+      '.credit-display',
+      '.credit-balance',
+      '.usage-counter',
+      '.billing-info'
+    ];
+    
+    const selector = lovableSelectors.join(', ');
+    
+    // Função para congelar elemento
+    function freezeElement(el) {
+      if (!el || el._dxFrozen) return;
+      
+      const text = el.textContent || el.innerText || '';
+      
+      // Detectar se contém números que parecem créditos
+      const creditPattern = /(\d+[\d,]*(?:\.\d+)?)/g;
+      const matches = text.match(creditPattern);
+      
+      if (matches) {
+        for (const match of matches) {
+          const value = parseInt(match.replace(/,/g, ''));
+          
+          // Se valor for baixo (possível consumo), substituir por valor fake
+          if (value >= 0 && value < 10000) {
+            const newText = text.replace(match, self.fakeCreditsRemaining.toString());
+            
+            if (el.textContent !== undefined) {
+              el.textContent = newText;
+            } else if (el.innerText !== undefined) {
+              el.innerText = newText;
+            }
+            
+            console.log('[LovableFreeze] DOM element frozen:', el);
+          }
+        }
+      }
+      
+      el._dxFrozen = true;
+    }
+    
+    // Congelar elementos existentes
+    document.querySelectorAll(selector).forEach(freezeElement);
+    
+    // Observer para novos elementos
+    this.domObserver = new MutationObserver((mutations) => {
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType === 1) { // Element node
+            if (node.matches && node.matches(selector)) {
+              freezeElement(node);
+            }
+            node.querySelectorAll(selector).forEach(freezeElement);
+          }
+        });
+      });
+    });
+    
+    this.domObserver.observe(document.body, { childList: true, subtree: true });
+    
+    console.log('[LovableFreeze] DOM freeze installed');
+  }
+  
+  /**
+   * Instala freeze em localStorage/sessionStorage
+   */
+  installStorageFreeze() {
+    const self = this;
+    
+    // Intercepta leituras de localStorage
+    const originalGetItem = Storage.prototype.getItem;
+    Storage.prototype.getItem = function(key) {
+      const value = originalGetItem.call(this, key);
+      
+      // Se chave relacionada a créditos/usage/billing
+      if (key.toLowerCase().includes('credit') || 
+          key.toLowerCase().includes('usage') ||
+          key.toLowerCase().includes('billing') ||
+          key.toLowerCase().includes('quota')) {
+        
+        try {
+          const parsed = JSON.parse(value);
+          const frozen = window.LovableFreezeInterceptor?.freezeCreditData?.(parsed) || parsed;
+          return JSON.stringify(frozen);
+        } catch (e) {
+          // Não é JSON, retornar original
+        }
+      }
+      
+      return value;
+    };
+    
+    console.log('[LovableFreeze] Storage freeze installed');
+  }
+  
+  /**
+   * Inicia sync periódico
+   */
+  startPeriodicSync() {
+    const self = this;
+    
+    this.freezeInterval = setInterval(() => {
+      if (!self.enabled) return;
+      
+      // Sync com React Freezer
+      reactFreezer?.syncFrozenComponents?.();
+      
+      // Sync com Credit Freeze
+      creditFreeze?.syncWithDOM?.();
+      
+      // Persistir estado
+      self.persistState();
+      
+    }, 1000);
+    
+    console.log('[LovableFreeze] Periodic sync started');
+  }
+  
+  /**
+   * Carrega estado persistente
+   */
+  loadPersistedState() {
+    try {
+      const stored = localStorage.getItem('lovable_freeze_state_v1');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        this.fakeCreditsRemaining = parsed.fakeCreditsRemaining || this.fakeCreditsRemaining;
+        this.enabled = parsed.enabled !== false;
+        console.log('[LovableFreeze] Loaded persisted state:', this.fakeCreditsRemaining);
+      }
+    } catch (e) {
+      console.warn('[LovableFreeze] Failed to load persisted state:', e);
+    }
+  }
+  
+  /**
+   * Persiste estado
+   */
+  persistState() {
+    try {
+      localStorage.setItem('lovable_freeze_state_v1', JSON.stringify({
+        fakeCreditsRemaining: this.fakeCreditsRemaining,
+        enabled: this.enabled,
+        lastUpdated: Date.now()
+      }));
+    } catch (e) {
+      console.warn('[LovableFreeze] Failed to persist state:', e);
+    }
+  }
+  
+  /**
+   * Atualiza quantidade de créditos fake
+   */
+  setFakeCredits(amount) {
+    this.fakeCreditsRemaining = amount;
+    this.persistState();
+    console.log('[LovableFreeze] Fake credits updated to:', amount);
+  }
+  
+  /**
+   * Habilita/desabilita módulo
+   */
+  setEnabled(enabled) {
+    this.enabled = enabled;
+    console.log('[LovableFreeze] Module', enabled ? 'enabled' : 'disabled');
+  }
+  
+  /**
+   * Cleanup
+   */
+  destroy() {
+    if (this.freezeInterval) {
+      clearInterval(this.freezeInterval);
+    }
+    if (this.domObserver) {
+      this.domObserver.disconnect();
+    }
+    console.log('[LovableFreeze] Module destroyed');
+  }
+}
+
+// Criar instância global
+const lovableFreeze = new LovableFreezeModule();
+window.LovableFreezeModule = lovableFreeze;
 
 /**
  * API global exposta para research e debugging no console da página
@@ -27,6 +320,10 @@ window.DXEdgeMiddleware = {
   IncidentType,
   IncidentSeverity,
   
+  // Lovable Freeze Module (NEW)
+  lovableFreeze,
+  LovableFreezeModule,
+  
   /**
    * Exporta dados completos de research sobre incidentes de billing
    */
@@ -40,6 +337,7 @@ window.DXEdgeMiddleware = {
       creditResilience: creditData,
       sessionMetrics: sessionData,
       websocketAnalysis: wsData,
+      lovableFreezeState: lovableFreeze.getState ? lovableFreeze.getState() : {},
       combinedMetrics: {
         totalIncidents: creditData.metrics.totalIncidents,
         splitBrainEvents: creditData.metrics.totalSplitBrainEvents,
