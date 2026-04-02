@@ -1,5 +1,5 @@
 // DX Edge Middleware - Main Content Script
-// Integrates CRDT engine, Session Manager, and WebSocket Interceptor
+// Integrates Data Audit Interceptor for AI platforms
 
 import { crdtManager } from './crdt-engine.js';
 import { sessionManager } from './session-manager.js';
@@ -19,9 +19,145 @@ async function initializeMiddleware() {
     // Setup event listeners for UI feedback
     setupEventListeners();
     
+    // Initialize data audit if available
+    if (window.DataAuditInterceptor) {
+      console.log('[DataAudit] Content script ready');
+      setupFetchInterception();
+    }
+    
   } catch (error) {
     console.error('[DX Edge Middleware] Initialization failed:', error);
   }
+}
+
+/**
+ * Intercepta fetch e XMLHttpRequest para auditoria de dados
+ */
+function setupFetchInterception() {
+  // Override fetch
+  const originalFetch = window.fetch;
+  window.fetch = async function(...args) {
+    const [url, options] = args;
+    const urlString = typeof url === 'string' ? url : url.url || url.href;
+    
+    // Verificar se é endpoint monitorado
+    if (window.DataAuditInterceptor && 
+        window.DataAuditInterceptor.isMonitoredEndpoint(urlString)) {
+      
+      let postData = null;
+      if (options && options.body) {
+        try {
+          postData = JSON.parse(options.body);
+        } catch (e) {
+          // Body não é JSON
+        }
+      }
+      
+      if (postData) {
+        const exposureScore = window.DataAuditInterceptor.calculateExposureScore(postData);
+        const metadata = window.DataAuditInterceptor.extractMetadata(postData);
+        
+        // Log sensitive data found
+        for (const [key, value] of Object.entries(metadata)) {
+          window.DataAuditInterceptor.logSensitiveData({
+            type: 'metadata',
+            field: key,
+            value: String(value),
+            url: urlString
+          });
+        }
+        
+        // Log request
+        window.DataAuditInterceptor.logRequest({
+          url: urlString,
+          method: options.method || 'POST',
+          endpoint: urlString,
+          exposureScore,
+          metadata,
+          tabId: chrome.runtime?.id || 0,
+          payloadSize: options.body?.length || 0
+        });
+        
+        console.log('[DataAudit] Request intercepted:', urlString, 'Score:', exposureScore);
+      }
+    }
+    
+    // Check if it's a tracking request to block
+    if (window.DataAuditInterceptor && 
+        window.DataAuditInterceptor.isTrackingRequest(urlString)) {
+      console.log('[DataAudit] Blocking tracking request:', urlString);
+      return Promise.reject(new Error('Blocked by Data Audit Extension'));
+    }
+    
+    // Make original request
+    const response = await originalFetch.apply(this, args);
+    
+    // Clone response to read body
+    const clonedResponse = response.clone();
+    
+    // Sanitize response if needed
+    if (window.DataAuditInterceptor && 
+        window.DataAuditInterceptor.getState().sanitizeResponses) {
+      try {
+        const data = await clonedResponse.json();
+        const sanitized = window.DataAuditInterceptor.sanitizeSensitiveData(data);
+        
+        // Create new response with sanitized data
+        return new Response(JSON.stringify(sanitized), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        });
+      } catch (e) {
+        // Response não é JSON, retorna original
+      }
+    }
+    
+    return response;
+  };
+  
+  // Override XMLHttpRequest
+  const originalXHROpen = XMLHttpRequest.prototype.open;
+  const originalXHRSend = XMLHttpRequest.prototype.send;
+  
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    this._auditUrl = url;
+    this._auditMethod = method;
+    return originalXHROpen.apply(this, [method, url, ...rest]);
+  };
+  
+  XMLHttpRequest.prototype.send = function(body) {
+    if (window.DataAuditInterceptor && this._auditUrl) {
+      // Check if tracking
+      if (window.DataAuditInterceptor.isTrackingRequest(this._auditUrl)) {
+        console.log('[DataAudit] Blocking XHR tracking:', this._auditUrl);
+        return;
+      }
+      
+      // Check if monitored endpoint
+      if (window.DataAuditInterceptor.isMonitoredEndpoint(this._auditUrl)) {
+        try {
+          const postData = JSON.parse(body);
+          const exposureScore = window.DataAuditInterceptor.calculateExposureScore(postData);
+          const metadata = window.DataAuditInterceptor.extractMetadata(postData);
+          
+          window.DataAuditInterceptor.logRequest({
+            url: this._auditUrl,
+            method: this._auditMethod,
+            endpoint: this._auditUrl,
+            exposureScore,
+            metadata,
+            tabId: chrome.runtime?.id || 0,
+            payloadSize: body?.length || 0
+          });
+        } catch (e) {
+          // Body não é JSON
+        }
+      }
+    }
+    
+    return originalXHRSend.apply(this, arguments);
+  };
 }
 
 function detectPlatform() {
