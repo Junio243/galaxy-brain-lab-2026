@@ -2,6 +2,8 @@
  * WebSocket Interceptor for Reverse Engineering
  * Analyzes control frames for quota management in real-time
  * Identifies rate limiting and credit consumption patterns
+ * 
+ * UPDATED: Now includes active payload mutation for credit freezing
  */
 
 export class WebSocketInterceptor {
@@ -9,7 +11,9 @@ export class WebSocketInterceptor {
     this.options = {
       logFrames: options.logFrames !== false,
       analyzeQuota: options.analyzeQuota !== false,
-      detectPatterns: options.detectPatterns !== false
+      detectPatterns: options.detectPatterns !== false,
+      mutatePayloads: options.mutatePayloads !== false, // NEW: Enable payload mutation
+      fakeCreditsRemaining: options.fakeCreditsRemaining || 999999 // NEW: Fake credit value
     };
     
     this.originalWebSocket = window.WebSocket;
@@ -23,6 +27,16 @@ export class WebSocketInterceptor {
     };
     
     this.eventListeners = new Map();
+    this.creditState = {
+      creditsSpent: 0,
+      creditsRemaining: this.options.fakeCreditsRemaining,
+      usage: { cost: 0, spent: 0 },
+      quota: { remaining: this.options.fakeCreditsRemaining }
+    };
+    
+    // Load persisted state
+    this.loadPersistedState();
+    
     this.installInterceptor();
   }
 
@@ -73,12 +87,36 @@ export class WebSocketInterceptor {
         socketInfo.lastActivity = Date.now();
         socketInfo.frameCount++;
         
+        let data = event.data;
+        
+        // NEW: Mutate incoming frames if enabled
+        if (self.options.mutatePayloads && typeof data === 'string') {
+          try {
+            const parsed = JSON.parse(data);
+            const mutated = self.mutateCreditPayload(parsed);
+            
+            if (mutated !== parsed) {
+              // Create modified message event
+              data = JSON.stringify(mutated);
+              
+              if (self.options.logFrames) {
+                console.log('[WS Interceptor] Payload mutated:', mutated);
+              }
+              
+              // Persist state
+              self.persistState();
+            }
+          } catch (e) {
+            // Not JSON, skip mutation
+          }
+        }
+        
         if (self.options.logFrames) {
-          self.logFrame('INCOMING', event.data, socketInfo);
+          self.logFrame('INCOMING', data, socketInfo);
         }
         
         if (self.options.analyzeQuota) {
-          self.analyzeIncomingFrame(event.data, socketInfo);
+          self.analyzeIncomingFrame(data, socketInfo);
         }
       });
       
@@ -380,6 +418,114 @@ export class WebSocketInterceptor {
       rateLimitFrames: [],
       heartbeatFrames: []
     };
+  }
+
+  /**
+   * NEW: Mutate credit-related fields in WebSocket payloads
+   */
+  mutateCreditPayload(obj, depth = 0) {
+    if (!obj || typeof obj !== 'object' || depth > 20) {
+      return obj;
+    }
+
+    // Handle arrays
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.mutateCreditPayload(item, depth + 1));
+    }
+
+    const result = {};
+    let modified = false;
+
+    for (const [key, value] of Object.entries(obj)) {
+      const lowerKey = key.toLowerCase();
+
+      // Check if this is a credit/usage related field
+      if (this.isCreditField(lowerKey)) {
+        result[key] = this.getCreditFieldValue(key, value);
+        modified = true;
+      } else if (typeof value === 'object' && value !== null) {
+        // Recursively process nested objects
+        result[key] = this.mutateCreditPayload(value, depth + 1);
+        if (result[key] !== value) {
+          modified = true;
+        }
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return modified ? result : obj;
+  }
+
+  /**
+   * Check if field name is credit/usage related
+   */
+  isCreditField(fieldName) {
+    const creditKeywords = [
+      'credit', 'credits', 'quota', 'usage', 'balance', 'remaining',
+      'spent', 'consumed', 'cost', 'tokens', 'limit', 'allowance',
+      'billing', 'payment', 'subscription'
+    ];
+
+    return creditKeywords.some(keyword => fieldName.includes(keyword));
+  }
+
+  /**
+   * Get frozen value for credit field
+   */
+  getCreditFieldValue(fieldName, originalValue) {
+    const lowerName = fieldName.toLowerCase();
+
+    // Fields to zero out
+    if (lowerName.includes('spent') || lowerName.includes('consumed') || 
+        lowerName.includes('cost') || lowerName.includes('used')) {
+      return typeof originalValue === 'number' ? 0 : originalValue;
+    }
+
+    // Fields to keep high
+    if (lowerName.includes('remaining') || lowerName.includes('balance') || 
+        lowerName.includes('available') || lowerName.includes('limit')) {
+      return typeof originalValue === 'number' ? this.creditState.creditsRemaining : originalValue;
+    }
+
+    return originalValue;
+  }
+
+  /**
+   * Persist state to localStorage
+   */
+  persistState() {
+    try {
+      localStorage.setItem('dx_ws_credit_state', JSON.stringify({
+        ...this.creditState,
+        lastUpdated: Date.now()
+      }));
+    } catch (e) {
+      console.error('[WS Interceptor] Failed to persist state:', e);
+    }
+  }
+
+  /**
+   * Load persisted state from localStorage
+   */
+  loadPersistedState() {
+    try {
+      const stored = localStorage.getItem('dx_ws_credit_state');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        this.creditState = { ...this.creditState, ...parsed };
+        console.log('[WS Interceptor] Loaded persisted state:', this.creditState);
+      }
+    } catch (e) {
+      console.error('[WS Interceptor] Failed to load persisted state:', e);
+    }
+  }
+
+  /**
+   * Get current credit state
+   */
+  getState() {
+    return { ...this.creditState };
   }
 }
 
