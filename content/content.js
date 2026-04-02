@@ -4,6 +4,7 @@
 import { crdtManager } from './crdt-engine.js';
 import { sessionManager } from './session-manager.js';
 import { wsInterceptor, protocolAnalyzer } from './websocket-interceptor.js';
+import { creditFreeze } from './credit-freeze.js';
 import { httpInterceptor } from './http-interceptor.js';
 import { reactFreezer } from './react-state-freezer.js';
 import { creditBypass } from './credit-check-bypass.js';
@@ -24,13 +25,16 @@ async function initializeMiddleware() {
     // Setup event listeners for UI feedback
     setupEventListeners();
     
-    // Initialize data audit if available (from main)
+    // Initialize data audit if available
     if (window.DataAuditInterceptor) {
       console.log('[DataAudit] Content script ready');
       setupFetchInterception();
     }
     
-    // Expose unified credit freezing API (from freeze-credit branch)
+    // Initialize credit freeze module (legacy/audit branch)
+    console.log('[CreditFreeze] Module integration starting...');
+    
+    // Expose unified credit freezing API (from main/freeze-credit branch)
     exposeCreditFreezingAPI();
     
   } catch (error) {
@@ -210,13 +214,14 @@ window.DXEdgeMiddleware = {
   crdtManager,
   wsInterceptor,
   protocolAnalyzer,
+  creditFreeze,
   httpInterceptor,
   reactFreezer,
   creditBypass,
   antiDetection,
   creditFreezingManager,
   
-  // Credit Freezing specific API
+  // Credit Freezing specific API (Modern)
   freezeCredits: (amount) => creditFreezingManager.setFakeCredits(amount),
   getCreditStatus: () => creditFreezingManager.getStatus(),
   resetCredits: () => creditFreezingManager.reset(),
@@ -230,6 +235,7 @@ window.DXEdgeMiddleware = {
       websocketData: wsInterceptor.exportData(),
       detectedPlatforms: protocolAnalyzer.getDetectedPlatforms(),
       researchData: await sessionManager.getResearchData(),
+      creditFreezeState: creditFreeze.getState(),
       creditFreezingData: creditFreezingManager.exportData()
     };
   },
@@ -244,7 +250,11 @@ window.DXEdgeMiddleware = {
     a.download = `dx-middleware-research-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }
+  },
+  
+  // Credit freeze controls (Legacy)
+  setFakeCredits: (amount) => creditFreeze.setFakeCredits(amount),
+  getCreditState: () => creditFreeze.getState()
 };
 
 /**
@@ -291,7 +301,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'getState':
       sendResponse({
         session: sessionManager.getState(),
-        metrics: sessionManager.getMetrics()
+        metrics: sessionManager.getMetrics(),
+        creditFreeze: creditFreeze.getState()
       });
       break;
       
@@ -304,6 +315,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'resetCircuitBreaker':
       sessionManager.circuitBreaker.reset();
       sendResponse({ success: true });
+      break;
+      
+    case 'setFakeCredits':
+      if (typeof request.amount === 'number') {
+        creditFreeze.setFakeCredits(request.amount);
+        sendResponse({ success: true, newAmount: request.amount });
+      } else {
+        sendResponse({ success: false, error: 'Invalid amount' });
+      }
+      break;
+      
+    case 'getCreditState':
+      sendResponse(creditFreeze.getState());
+      break;
+      
+    // Messages from background/popup
+    case 'SET_CREDIT_FREEZE_ENABLED':
+      creditFreeze.setEnabled(request.enabled);
+      sendResponse({ success: true, enabled: request.enabled });
+      break;
+      
+    case 'SET_FAKE_CREDITS':
+      creditFreeze.setFakeCredits(request.amount);
+      sendResponse({ success: true, newAmount: request.amount });
+      break;
+      
+    case 'GET_CREDIT_STATE':
+      sendResponse(creditFreeze.getState());
       break;
       
     default:

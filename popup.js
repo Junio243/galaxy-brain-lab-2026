@@ -3,6 +3,10 @@
 document.addEventListener('DOMContentLoaded', function() {
     const blockTrackingToggle = document.getElementById('blockTrackingToggle');
     const sanitizeToggle = document.getElementById('sanitizeToggle');
+    const freezeCreditsToggle = document.getElementById('freezeCreditsToggle');
+    const fakeCreditsInput = document.getElementById('fakeCreditsInput');
+    const setFakeCreditsBtn = document.getElementById('setFakeCreditsBtn');
+    const creditFreezeStateEl = document.getElementById('creditFreezeState');
     const totalRequestsEl = document.getElementById('totalRequests');
     const blockedRequestsEl = document.getElementById('blockedRequests');
     const highExposureCountEl = document.getElementById('highExposureCount');
@@ -21,6 +25,8 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'NEW_REQUEST') {
             updateUI(request.data);
+        } else if (request.action === 'CREDIT_FREEZE_UPDATE') {
+            updateCreditFreezeUI(request.state);
         }
         sendResponse({ received: true });
     });
@@ -39,6 +45,39 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.runtime.sendMessage({ action: 'TOGGLE_SANITIZATION' }, (response) => {
             if (response && response.success) {
                 console.log('Sanitize responses:', response.sanitizeResponses);
+            }
+        });
+    });
+
+    // Toggle congelar créditos
+    freezeCreditsToggle.addEventListener('change', function() {
+        chrome.runtime.sendMessage({ 
+            action: 'SET_CREDIT_FREEZE_ENABLED', 
+            enabled: this.checked 
+        }, (response) => {
+            if (response && response.success) {
+                console.log('Credit freeze:', response.enabled);
+            }
+        });
+    });
+
+    // Set fake credits amount
+    setFakeCreditsBtn.addEventListener('click', function() {
+        const amount = parseInt(fakeCreditsInput.value, 10);
+        if (isNaN(amount) || amount < 0) {
+            alert('Por favor, insira um valor válido');
+            return;
+        }
+        
+        chrome.runtime.sendMessage({ 
+            action: 'SET_FAKE_CREDITS', 
+            amount: amount 
+        }, (response) => {
+            if (response && response.success) {
+                alert(`Créditos fake atualizados para: ${amount}`);
+                loadCreditFreezeState();
+            } else {
+                alert('Erro ao atualizar créditos: ' + (response?.error || 'Desconhecido'));
             }
         });
     });
@@ -71,6 +110,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateStatusBadge(true);
             }
             
+            // Carregar estado do credit freeze
+            loadCreditFreezeState();
+            
             // Obter estatísticas diárias
             chrome.runtime.sendMessage({ action: 'GET_STATS' }, (response) => {
                 if (response && response.stats) {
@@ -92,6 +134,38 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    }
+
+    function loadCreditFreezeState() {
+        chrome.runtime.sendMessage({ action: 'GET_CREDIT_STATE' }, (state) => {
+            if (state) {
+                updateCreditFreezeUI(state);
+            }
+        });
+    }
+
+    function updateCreditFreezeUI(state) {
+        if (!state) return;
+        
+        // Atualizar toggle
+        freezeCreditsToggle.checked = state.enabled !== false;
+        
+        // Atualizar input de créditos fake
+        fakeCreditsInput.value = state.remaining || 999999;
+        
+        // Atualizar display de estado
+        if (creditFreezeStateEl) {
+            const platformText = state.platform ? ` (${state.platform})` : '';
+            const statusText = state.enabled ? '✅ Ativo' : '❌ Desativado';
+            const creditsText = `Créditos: ${state.remaining || 0}`;
+            const frozenText = state.frozen ? '🔒 Congelado' : '🔓 Livre';
+            
+            creditFreezeStateEl.innerHTML = `
+                <div>${statusText}</div>
+                <div style="margin-top: 4px;">${creditsText}</div>
+                <div style="margin-top: 2px; font-size: 10px; color: #888;">${frozenText}${platformText}</div>
+            `;
+        }
     }
 
     function updateUI(data) {
