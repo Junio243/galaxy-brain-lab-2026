@@ -1,10 +1,15 @@
 // DX Edge Middleware - Main Content Script
-// Integrates Data Audit Interceptor for AI platforms
+// Integrates CRDT engine, Session Manager, WebSocket Interceptor, Credit Freezing, and Data Audit Interceptor
 
 import { crdtManager } from './crdt-engine.js';
 import { sessionManager } from './session-manager.js';
 import { wsInterceptor, protocolAnalyzer } from './websocket-interceptor.js';
 import { creditFreeze } from './credit-freeze.js';
+import { httpInterceptor } from './http-interceptor.js';
+import { reactFreezer } from './react-state-freezer.js';
+import { creditBypass } from './credit-check-bypass.js';
+import { antiDetection } from './anti-detection.js';
+import { creditFreezingManager } from './credit-freezing-manager.js';
 
 console.log('[DX Edge Middleware] Initializing...');
 
@@ -26,8 +31,11 @@ async function initializeMiddleware() {
       setupFetchInterception();
     }
     
-    // Initialize credit freeze module
+    // Initialize credit freeze module (legacy/audit branch)
     console.log('[CreditFreeze] Module integration starting...');
+    
+    // Expose unified credit freezing API (from main/freeze-credit branch)
+    exposeCreditFreezingAPI();
     
   } catch (error) {
     console.error('[DX Edge Middleware] Initialization failed:', error);
@@ -183,13 +191,11 @@ function setupEventListeners() {
   // Race condition detection
   sessionManager.on('race-condition', (data) => {
     console.warn('[DX Edge Middleware] Race condition detected:', data);
-    // Could trigger UI notification here
   });
   
   // Credit expiration
   sessionManager.on('credit-expired', (data) => {
     console.warn('[DX Edge Middleware] Credits expired:', data);
-    // Could trigger offline mode UI
   });
   
   // WebSocket quota events
@@ -209,6 +215,17 @@ window.DXEdgeMiddleware = {
   wsInterceptor,
   protocolAnalyzer,
   creditFreeze,
+  httpInterceptor,
+  reactFreezer,
+  creditBypass,
+  antiDetection,
+  creditFreezingManager,
+  
+  // Credit Freezing specific API (Modern)
+  freezeCredits: (amount) => creditFreezingManager.setFakeCredits(amount),
+  getCreditStatus: () => creditFreezingManager.getStatus(),
+  resetCredits: () => creditFreezingManager.reset(),
+  downloadCreditData: () => creditFreezingManager.downloadData(),
   
   // Export research data
   exportResearchData: async () => {
@@ -218,7 +235,8 @@ window.DXEdgeMiddleware = {
       websocketData: wsInterceptor.exportData(),
       detectedPlatforms: protocolAnalyzer.getDetectedPlatforms(),
       researchData: await sessionManager.getResearchData(),
-      creditFreezeState: creditFreeze.getState()
+      creditFreezeState: creditFreeze.getState(),
+      creditFreezingData: creditFreezingManager.exportData()
     };
   },
   
@@ -234,10 +252,41 @@ window.DXEdgeMiddleware = {
     URL.revokeObjectURL(url);
   },
   
-  // Credit freeze controls
+  // Credit freeze controls (Legacy)
   setFakeCredits: (amount) => creditFreeze.setFakeCredits(amount),
   getCreditState: () => creditFreeze.getState()
 };
+
+/**
+ * Expose unified credit freezing API
+ */
+function exposeCreditFreezingAPI() {
+  console.log('[DX Edge Middleware] Credit Freezing API exposed on window.CreditFreeze');
+  
+  window.CreditFreeze = {
+    // Status
+    getStatus: () => creditFreezingManager.getStatus(),
+    
+    // Control
+    setCredits: (amount) => creditFreezingManager.setFakeCredits(amount),
+    reset: () => creditFreezingManager.reset(),
+    pause: () => creditFreezingManager.pause(),
+    resume: () => creditFreezingManager.resume(),
+    
+    // Data export
+    exportData: () => creditFreezingManager.exportData(),
+    downloadData: () => creditFreezingManager.downloadData(),
+    
+    // Individual module access (for debugging)
+    modules: {
+      http: httpInterceptor,
+      ws: wsInterceptor,
+      react: reactFreezer,
+      bypass: creditBypass,
+      antiDetection: antiDetection
+    }
+  };
+}
 
 // Start initialization when DOM is ready
 if (document.readyState === 'loading') {
