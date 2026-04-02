@@ -25,17 +25,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "lib/dexie.min.js",
-        "content/data-audit-interceptor.js",
-        "content/crdt-engine.js",
-        "content/session-manager.js",
-        "content/websocket-interceptor.js",
-        "content/http-interceptor.js",
-        "content/react-state-freezer.js",
-        "content/credit-check-bypass.js",
-        "content/anti-detection.js",
-        "content/credit-freeze.js",
-        "content/credit-freezing-manager.js",
-        "content/content.js"
+        "content.bundle.js"
       ],
       "css": ["styles.css"],
       "run_at": "document_start"
