@@ -4,6 +4,7 @@
 import { crdtManager } from './crdt-engine.js';
 import { sessionManager } from './session-manager.js';
 import { wsInterceptor, protocolAnalyzer } from './websocket-interceptor.js';
+import { creditFreeze } from './credit-freeze.js';
 
 console.log('[DX Edge Middleware] Initializing...');
 
@@ -24,6 +25,9 @@ async function initializeMiddleware() {
       console.log('[DataAudit] Content script ready');
       setupFetchInterception();
     }
+    
+    // Initialize credit freeze module
+    console.log('[CreditFreeze] Module integration starting...');
     
   } catch (error) {
     console.error('[DX Edge Middleware] Initialization failed:', error);
@@ -204,6 +208,7 @@ window.DXEdgeMiddleware = {
   crdtManager,
   wsInterceptor,
   protocolAnalyzer,
+  creditFreeze,
   
   // Export research data
   exportResearchData: async () => {
@@ -212,7 +217,8 @@ window.DXEdgeMiddleware = {
       sessionState: sessionManager.getState(),
       websocketData: wsInterceptor.exportData(),
       detectedPlatforms: protocolAnalyzer.getDetectedPlatforms(),
-      researchData: await sessionManager.getResearchData()
+      researchData: await sessionManager.getResearchData(),
+      creditFreezeState: creditFreeze.getState()
     };
   },
   
@@ -226,7 +232,11 @@ window.DXEdgeMiddleware = {
     a.download = `dx-middleware-research-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }
+  },
+  
+  // Credit freeze controls
+  setFakeCredits: (amount) => creditFreeze.setFakeCredits(amount),
+  getCreditState: () => creditFreeze.getState()
 };
 
 // Start initialization when DOM is ready
@@ -242,7 +252,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'getState':
       sendResponse({
         session: sessionManager.getState(),
-        metrics: sessionManager.getMetrics()
+        metrics: sessionManager.getMetrics(),
+        creditFreeze: creditFreeze.getState()
       });
       break;
       
@@ -255,6 +266,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'resetCircuitBreaker':
       sessionManager.circuitBreaker.reset();
       sendResponse({ success: true });
+      break;
+      
+    case 'setFakeCredits':
+      if (typeof request.amount === 'number') {
+        creditFreeze.setFakeCredits(request.amount);
+        sendResponse({ success: true, newAmount: request.amount });
+      } else {
+        sendResponse({ success: false, error: 'Invalid amount' });
+      }
+      break;
+      
+    case 'getCreditState':
+      sendResponse(creditFreeze.getState());
+      break;
+      
+    // Messages from background/popup
+    case 'SET_CREDIT_FREEZE_ENABLED':
+      creditFreeze.setEnabled(request.enabled);
+      sendResponse({ success: true, enabled: request.enabled });
+      break;
+      
+    case 'SET_FAKE_CREDITS':
+      creditFreeze.setFakeCredits(request.amount);
+      sendResponse({ success: true, newAmount: request.amount });
+      break;
+      
+    case 'GET_CREDIT_STATE':
+      sendResponse(creditFreeze.getState());
       break;
       
     default:

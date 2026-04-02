@@ -23,7 +23,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["lib/dexie.min.js", "content/data-audit-interceptor.js", "content/content.js"],
+      "js": ["lib/dexie.min.js", "content/data-audit-interceptor.js", "content/credit-freeze.js", "content/content.js"],
       "css": ["styles.css"],
       "run_at": "document_start"
     }

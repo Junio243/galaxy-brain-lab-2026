@@ -299,6 +299,54 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       return true;
       
+    // Credit Freeze module messages
+    case 'SET_CREDIT_FREEZE_ENABLED':
+      // Encaminha para content script
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'SET_CREDIT_FREEZE_ENABLED',
+            enabled: request.enabled
+          }, (response) => {
+            sendResponse(response || { success: false, error: 'No response from content script' });
+          });
+        } else {
+          sendResponse({ success: false, error: 'No active tab' });
+        }
+      });
+      return true;
+      
+    case 'SET_FAKE_CREDITS':
+      // Encaminha para content script
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'SET_FAKE_CREDITS',
+            amount: request.amount
+          }, (response) => {
+            sendResponse(response || { success: false, error: 'No response from content script' });
+          });
+        } else {
+          sendResponse({ success: false, error: 'No active tab' });
+        }
+      });
+      return true;
+      
+    case 'GET_CREDIT_STATE':
+      // Encaminha para content script
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'GET_CREDIT_STATE'
+          }, (response) => {
+            sendResponse(response || { enabled: false, remaining: 0 });
+          });
+        } else {
+          sendResponse({ enabled: false, remaining: 0, error: 'No active tab' });
+        }
+      });
+      return true;
+      
     default:
       sendResponse({ error: 'Unknown action' });
   }

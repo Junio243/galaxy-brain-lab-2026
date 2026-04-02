@@ -242,6 +242,31 @@
     </div>
 
     <div class="section">
+        <div class="section-title">❄️ Credit Freeze (Lovable)</div>
+        <div class="toggle-row">
+            <span class="toggle-label">Congelar Créditos</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="freezeCreditsToggle" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div style="margin-top: 10px;">
+            <label style="font-size: 12px; color: #666;">Créditos Fake:</label>
+            <input type="number" id="fakeCreditsInput" value="999999" 
+                   style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;" />
+            <button id="setFakeCreditsBtn" class="btn btn-primary" style="margin-top: 5px; padding: 8px;">
+                Aplicar Valor
+            </button>
+        </div>
+        <div style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+            <div style="font-size: 11px; color: #666;">Estado Atual:</div>
+            <div id="creditFreezeState" style="font-size: 12px; font-weight: bold; color: #667eea;">
+              Carregando...
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
         <div class="section-title">⚙️ Configurações</div>
         <div class="toggle-row">
             <span class="toggle-label">Bloquear Tracking</span>
