@@ -2,77 +2,287 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <title>AI Data Audit - Painel de Transparência</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
-            width: 300px;
+            width: 400px;
             padding: 20px;
-            font-family: Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            background: #f5f5f5;
         }
         .header {
             text-align: center;
             margin-bottom: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            color: white;
         }
-        .status {
+        .header h2 {
+            margin: 0 0 5px 0;
+            font-size: 18px;
+        }
+        .header p {
+            margin: 0;
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
             text-align: center;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 24px;
             font-weight: bold;
+            color: #667eea;
         }
-        .active {
-            background-color: #d4edda;
-            color: #155724;
+        .stat-label {
+            font-size: 11px;
+            color: #666;
+            margin-top: 5px;
         }
-        .inactive {
-            background-color: #f8d7da;
-            color: #721c24;
+        .section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .controls {
-            text-align: center;
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        button {
-            padding: 10px 15px;
-            margin: 5px;
-            border: none;
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .toggle-row:last-child {
+            border-bottom: none;
+        }
+        .toggle-label {
+            font-size: 13px;
+            color: #555;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .3s;
+            border-radius: 26px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        .exposure-meter {
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .exposure-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50, #ffeb3b, #f44336);
+            transition: width 0.3s;
+        }
+        .exposure-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #666;
+        }
+        .last-request {
+            font-size: 12px;
+            color: #666;
+            padding: 10px;
+            background: #f9f9f9;
             border-radius: 5px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .last-request pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: bold;
+            font-size: 14px;
+            margin-top: 10px;
+            transition: all 0.2s;
         }
-        .freeze-btn {
-            background-color: #dc3545;
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        .unfreeze-btn {
-            background-color: #28a745;
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
+        }
+        .btn-danger {
+            background: #f44336;
             color: white;
         }
-        .info {
-            margin-top: 20px;
-            padding: 10px;
-            background-color: #e9ecef;
-            border-radius: 5px;
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-active {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .status-inactive {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .metadata-list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0;
+        }
+        .metadata-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #eee;
             font-size: 12px;
+        }
+        .metadata-item:last-child {
+            border-bottom: none;
+        }
+        .metadata-key {
+            font-weight: bold;
+            color: #667eea;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h2>Lovable Credit Freeze</h2>
-        <div id="status" class="status inactive">Desativado</div>
+        <h2>🔍 AI Data Audit</h2>
+        <p>Painel de Transparência</p>
+        <span id="statusBadge" class="status-badge status-active">Ativo</span>
     </div>
-    
-    <div class="controls">
-        <button id="toggleBtn" class="freeze-btn">Congelar Créditos</button>
+
+    <div class="stats-container">
+        <div class="stat-card">
+            <div class="stat-value" id="totalRequests">0</div>
+            <div class="stat-label">Requisições Monitoradas</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="blockedRequests">0</div>
+            <div class="stat-label">Tracking Bloqueado</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="highExposureCount">0</div>
+            <div class="stat-label">Alto Exposure</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="todayStats">0</div>
+            <div class="stat-label">Hoje</div>
+        </div>
     </div>
-    
-    <div class="info">
-        <p><strong>Como usar:</strong></p>
-        <ul>
-            <li>Clique em "Congelar Créditos" para ativar</li>
-            <li>A extensão impedirá o consumo de créditos</li>
-            <li>Reinicie o navegador para desativar completamente</li>
+
+    <div class="section">
+        <div class="section-title">⚙️ Configurações</div>
+        <div class="toggle-row">
+            <span class="toggle-label">Bloquear Tracking</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="blockTrackingToggle" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="toggle-row">
+            <span class="toggle-label">Sanitizar Respostas</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="sanitizeToggle" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">📊 Exposure Score</div>
+        <div class="exposure-meter">
+            <div class="exposure-fill" id="exposureFill" style="width: 0%"></div>
+        </div>
+        <div class="exposure-labels">
+            <span>Baixo (0)</span>
+            <span>Médio (50)</span>
+            <span>Alto (100)</span>
+        </div>
+        <div class="last-request" id="lastRequestInfo">
+            <p style="color: #999; text-align: center;">Nenhuma requisição monitorada ainda</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">📋 Metadata Detectada</div>
+        <ul class="metadata-list" id="metadataList">
+            <li class="metadata-item" style="color: #999;">Aguardando dados...</li>
         </ul>
     </div>
+
+    <button class="btn btn-primary" id="refreshBtn">🔄 Atualizar Dados</button>
+    <button class="btn btn-danger" id="clearDataBtn">🗑️ Limpar Histórico</button>
 
     <script src="popup.js"></script>
 </body>

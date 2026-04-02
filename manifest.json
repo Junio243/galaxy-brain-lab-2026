@@ -1,23 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "DX Edge Middleware - Local-First AI Code Platform",
-  "version": "2.0.0",
-  "description": "Advanced developer experience middleware with circuit breaker, CRDTs, offline-first architecture, and shadow syncing for AI code generation platforms",
+  "name": "AI Data Audit Extension - Auditoria de Dados Pessoais",
+  "version": "1.0.0",
+  "description": "Extensão para auditoria de dados pessoais em plataformas de IA. Intercepta requisições, identifica leakage de dados, calcula exposure score e protege informações sensíveis.",
   "permissions": [
     "activeTab",
     "storage",
     "unlimitedStorage",
     "background",
-    "scripting"
+    "scripting",
+    "webRequest",
+    "declarativeNetRequest",
+    "offscreen"
   ],
   "host_permissions": [
-    "https://*.lovable.dev/*",
-    "https://*.lovable.com/*",
-    "https://*.replit.com/*",
-    "https://*.cursor.sh/*",
-    "https://*.windsurf.ai/*",
-    "https://*.bolt.new/*",
-    "wss://*/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background/service-worker.js",
@@ -25,14 +22,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.lovable.dev/*", "https://*.lovable.com/*", "https://*.replit.com/*", "https://*.cursor.sh/*", "https://*.windsurf.ai/*", "https://*.bolt.new/*"],
-      "js": ["lib/dexie.min.js", "content/crdt-engine.js", "content/session-manager.js", "content/websocket-interceptor.js", "content/content.js"],
-      "css": ["styles.css"]
+      "matches": ["<all_urls>"],
+      "js": ["lib/dexie.min.js", "content/data-audit-interceptor.js", "content/content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_start"
     }
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "DX Edge Middleware",
+    "default_title": "AI Data Audit - Painel de Transparência",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
@@ -45,7 +43,7 @@
     "128": "icons/icon128.png"
   },
   "web_accessible_resources": [{
-    "resources": ["lib/*", "content/*"],
+    "resources": ["lib/*", "content/*", "offscreen/*"],
     "matches": ["<all_urls>"]
   }]
 }
