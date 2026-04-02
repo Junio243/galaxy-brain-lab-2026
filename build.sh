@@ -12,7 +12,7 @@ mkdir -p dist
 # Copiar todos os arquivos necessários
 echo "Copiando arquivos..."
 cp manifest.json dist/
-cp content.bundle.js dist/content.js
+cp content.bundle.js dist/
 cp popup.html dist/
 cp popup.js dist/
 cp styles.css dist/
