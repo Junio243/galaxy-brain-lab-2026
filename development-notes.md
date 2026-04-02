@@ -1,4 +1,4 @@
-# DX Edge Middleware - Development Notes
+# AI Data Audit Extension + Lovable Freeze - Development Notes
 
 ## Arquitetura do Sistema
 
@@ -17,25 +17,152 @@
 │  ┌─────────────────────────────────────────────────────────┐    │
 │  │              Content Scripts (Page Context)              │    │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │    │
-│  │  │ CRDT Engine  │  │ Session Mgr  │  │ WebSocket Int │  │    │
-│  │  │ + Vector     │  │ + Shadow     │  │ + Protocol    │  │    │
-│  │  │   Clocks     │  │   Sync       │  │   Analyzer    │  │    │
+│  │  │ Lovable      │  │ Credit       │  │ React State   │  │    │
+│  │  │ Freeze Mgr   │  │ Freeze       │  │ Freezer       │  │    │
+│  │  └──────────────┘  └──────────────┘  └───────────────┘  │    │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │    │
+│  │  │ Financial    │  │ HTTP         │  │ WebSocket     │  │    │
+│  │  │ Resilience   │  │ Interceptor  │  │ Interceptor   │  │    │
+│  │  │ Analyzer     │  │              │  │               │  │    │
 │  │  └──────────────┘  └──────────────┘  └───────────────┘  │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                                                  │
 │  ┌──────────────────┐                                           │
 │  │   IndexedDB      │ (Shadow Sync Storage)                     │
-│  │   - sessions     │                                           │
-│  │   - operations   │                                           │
-│  │   - quotaState   │                                           │
-│  │   - conflicts    │                                           │
+│  │   - auditLog     │                                           │
+│  │   - freezeState  │                                           │
+│  │   - creditCache  │                                           │
 │  └──────────────────┘                                           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Componentes Principais
 
-### 1. Circuit Breaker (`background/circuit-breaker.js`)
+### 1. LovableFreezeModule (`content/content.js`)
+
+**Funcionalidades:**
+- Interceptação reforçada de fetch/XHR em múltiplas camadas
+- Freeze de DOM com MutationObserver
+- Freeze de localStorage para persistência
+- Integração com módulos especializados
+
+**API Global:**
+```javascript
+window.LovableFreezeModule = {
+  getState(),           // Retorna estado atual do freeze
+  freezeDOM(),          // Aplica freeze em elementos visuais
+  freezeLocalStorage(), // Persiste estado congelado
+  getLogs()            // Retorna logs de interceptação
+}
+```
+
+**Endpoints monitorados:**
+```javascript
+LOVABLE_CRITICAL_ENDPOINTS = [
+  '/api/usage',
+  '/api/credits',
+  '/api/billing',
+  '/api/subscriptions',
+  '/api/generation'
+];
+```
+
+### 2. Credit Freeze Module (`content/credit-freeze.js`, `content/credit-check-bypass.js`)
+
+**Constantes:**
+```javascript
+LOVABLE_CREDIT_PATTERNS = [
+  /usedCredits/i,
+  /remainingCredits/i,
+  /totalCredits/i,
+  /consumptionRate/i,
+  /creditBalance/i
+];
+```
+
+**Funções principais:**
+- `isLovableCriticalEndpoint(url)`: Verifica se URL é crítica
+- `freezeCreditData(response)`: Modifica dados de crédito na resposta
+- `createFakeCreditResponse()`: Cria resposta falsa com créditos infinitos
+
+**Transformação de respostas:**
+```javascript
+// Antes
+{ usedCredits: 950, remainingCredits: 50, totalCredits: 1000 }
+
+// Depois
+{ usedCredits: 0, remainingCredits: 9999, totalCredits: 9999 }
+```
+
+### 3. React State Freezer (`content/react-state-freezer.js`)
+
+**Objetivo:** Congelar componentes React relacionados a créditos/uso
+
+**Técnicas:**
+- Override de `setState` em componentes críticos
+- Detecção automática por classNames (credit, usage, billing)
+- Prevenção de re-renders indesejados
+
+**Exemplo:**
+```javascript
+// Intercepta chamadas setState
+const originalSetState = ReactComponent.prototype.setState;
+ReactComponent.prototype.setState = function(newState) {
+  if (this.isCreditComponent()) {
+    return; // Bloqueia atualização
+  }
+  return originalSetState.call(this, newState);
+};
+```
+
+### 4. Financial Resilience Analyzer (`content/financial-resilience-analyzer.js`)
+
+**Objetivo:** Detectar e corrigir discrepâncias entre cliente/servidor
+
+**Detecção de desync:**
+```javascript
+{
+  clientCredits: 9999,
+  serverCredits: 50,
+  discrepancy: 9949,
+  action: 'apply_freeze_correction'
+}
+```
+
+**Correções automáticas:**
+- Re-aplica freeze quando servidor reporta consumo diferente
+- Monitora polling de atualização de créditos
+- Loga tentativas de correção para debugging
+
+### 5. HTTP Interceptor (`content/http-interceptor.js`)
+
+**Camadas de interceptação:**
+1. `fetch()` override
+2. `XMLHttpRequest.send()` override
+3. Response body modification
+
+**Fluxo:**
+```
+Request → Detect endpoint → Modify if critical → Send → 
+Receive response → Parse JSON → Apply freeze → Return to caller
+```
+
+### 6. WebSocket Interceptor (`content/websocket-interceptor.js`)
+
+**Análise de frames em tempo real:**
+```javascript
+// Padrões detectados automaticamente:
+{
+  quotaKeywords: ['credit', 'quota', 'usage', 'consume', ...],
+  rateLimitKeywords: ['rate limit', 'throttle', '429', ...]
+}
+```
+
+**Protocolos suportados:**
+- Lovable: `/api/credits`, `/api/usage`
+- Mensagens WebSocket sobre consumo em tempo real
+
+### 7. Circuit Breaker (`background/circuit-breaker.js`)
 
 **Estados:**
 - `CLOSED`: Operação normal, todas as requisições passam
@@ -57,246 +184,155 @@
 }
 ```
 
-### 2. CRDT Engine (`content/crdt-engine.js`)
-
-**Tipos implementados:**
-
-1. **VectorClock**: Rastreamento de causalidade distribuída
-   - Incremento lógico por operação
-   - Merge para reconciliação
-   - Comparação happens-before
-
-2. **LWWRegister**: Last-Writer-Wins Register
-   - Timestamp lógico (vector clock) + físico
-   - Tiebreaker por nodeId para determinismo
-   - Idempotente
-
-3. **CRDTDocument**: Multi-field document
-   - Múltiplos registers por documento
-   - Operações pendentes e sincronizadas
-   - Log de operações para replay
-
-4. **CRDTManager**: Gerenciamento de múltiplos documentos
-   - Event-driven architecture
-   - Export/import de estado
-   - Detecção de operações pendentes
-
-**Exemplo de uso:**
-```javascript
-// Atualização local (offline-safe)
-crdtManager.updateDocument('doc-123', {
-  code: 'console.log("hello")',
-  cursorPosition: 42
-});
-
-// Aplicar operação remota
-crdtManager.applyRemoteOperations('doc-123', remoteOps);
-```
-
-### 3. Session Manager (`content/session-manager.js`)
-
-**Shadow Syncing Flow:**
-```
-1. Operação executada pelo usuário
-         │
-         ▼
-2. Aplicar localmente (optimistic)
-         │
-         ▼
-3. Shadow sync → IndexedDB ← Durabilidade garantida
-         │
-         ├──────────────┐
-         │              │
-    (online)        (offline)
-         │              │
-         ▼              ▼
-4. Sync servidor   Queue operation
-         │              │
-         ▼              ▼
-5. Confirmar       Retry later
-   ou falhar       quando online
-```
-
-**Detecção de Race Conditions:**
-
-Cenário crítico: Operações offline replicadas após expiração de créditos
-
-```javascript
-// Condições detectadas:
-{
-  code: 'CREDIT_EXPIRED',
-  offlineDuration: 400000,  // > 5 minutos offline
-  lastCreditCheck: 1234567890
-}
-```
-
-**Métricas de research:**
-- `raceConditionsDetected`: Quantas vezes operações conflitaram com expiração
-- `creditExpirationsDuringOffline`: Expired credits while offline
-- `reconciliationConflicts`: Conflitos durante merge
-- `inconsistencyWindows`: Janelas de inconsistência entre edge nodes
-
-### 4. WebSocket Interceptor (`content/websocket-interceptor.js`)
-
-**Análise de frames em tempo real:**
-
-```javascript
-// Padrões detectados automaticamente:
-{
-  quotaKeywords: ['credit', 'quota', 'usage', 'consume', ...],
-  rateLimitKeywords: ['rate limit', 'throttle', '429', ...]
-}
-```
-
-**Protocolos suportados:**
-- Lovable: `/api/credits`, `/api/usage`
-- Replit: `/api/billing`, `/api/tokens`
-- Cursor: `/api/quota`, `/api/limits`
-
-**Export de dados para reverse engineering:**
-```javascript
-const data = wsInterceptor.exportData();
-// Retorna: sockets, patterns, frameLog, quotaEvents, statistics
-```
-
 ## Decisões de Arquitetura
 
-### Por que CRDTs e não Operational Transformation (OT)?
+### Por que interceptação em múltiplas camadas?
 
-| CRDT | OT |
-|------|-----|
-| Merge automático sem servidor central | Requer servidor para transformação |
-| Offline-first nativo | Complexo para offline |
-| Mais simples de implementar | Algoritmos complexos |
-| Ideal para P2P | Ideal para cliente-servidor |
+1. **Resiliência**: Se uma camada falhar, outras mantêm o freeze
+2. **Cobertura**: Diferentes plataformas usam diferentes métodos (fetch, XHR, WebSocket)
+3. **Stealth**: Menos detectável que monkey-patching agressivo
 
-### Por que Shadow Sync?
+### Por que freeze visual + dados?
 
-1. **Durabilidade**: Dados persistem mesmo se servidor falhar
-2. **Recuperação**: Pode reenviar operações após falha
-3. **Auditoria**: Log completo de todas as operações
-4. **Debug**: Estado reproduzível para troubleshooting
+1. **UI consistente**: Elementos visuais não piscam ou atualizam
+2. **Dados consistentes**: Respostas de API sempre retornam valores congelados
+3. **Persistência**: Estado mantido entre refreshes via localStorage
 
-### Por que IndexedDB e não localStorage?
+### Por que módulo de resiliência financeira?
 
-- **Capacidade**: ~50MB vs ~5MB
-- **Performance**: Transações assíncronas não bloqueiam UI
-- **Indexação**: Consultas eficientes em grandes datasets
-- **Versionamento**: Schema migrations nativas
+1. **Detecção proativa**: Identifica quando servidor tenta corrigir UI
+2. **Correção automática**: Re-aplica freeze sem intervenção do usuário
+3. **Logging**: Auditoria completa de tentativas de atualização
 
-## Pesquisa em Distributed Systems
+## Pesquisa em Platform Manipulation
 
 ### Inconsistency Windows
 
-Janela de tempo onde diferentes edge nodes podem ter estados inconsistentes:
+Janela de tempo onde cliente e servidor têm estados inconsistentes:
 
 ```
-Edge Node A          Edge Node B          Server
-     │                    │                  │
-     ├─ Write X=1         │                  │
-     ├─ Shadow Sync       │                  │
-     │                    │                  │
-     │                    ├─ Write X=2       │
-     │                    ├─ Shadow Sync     │
-     │                    │                  │
-     ├────────────────────┼─ Sync ──────────►│
-     │                    │                  │
-     │                    ├──────────────────┤
-     │                                       │
-     ◄───────────────────────────────────────┤
-     │                    │                  │
+Client              Server
+   │                  │
+   ├─ Request credits │
+   │                  │
+   ◄─ 9999 credits ───┤
+   │                  │
+   ├─ Use feature     │
+   │                  │
+   │                  ├─ Deduct 10 credits
+   │                  │
+   ├─ Poll credits    │
+   │                  │
+   ◄─ 50 credits ─────┤  ← Servidor reporta consumo real
+   │                  │
+   ├─ Apply freeze    │
+   │                  │
+   │                  ├─ (Server still has 50)
 ```
 
-**Research question**: Qual é a janela máxima aceitável para UX vs consistência?
+**Research question**: Qual é a janela máxima antes do servidor detectar anomalia?
 
-### Otimistic Concurrency Patterns
+### Detection Evasion Patterns
 
 ```javascript
 // Pattern implementado:
-async executeOperation(op) {
-  applyLocal(op);      // Imediato (optimistic)
-  shadowSync(op);      // Durabilidade
+async interceptFetch(url, options) {
+  const response = await originalFetch(url, options);
   
-  if (online) {
-    try {
-      await serverSync(op);  // Pode falhar
-      markSuccess(op);
-    } catch (e) {
-      queueRetry(op);        // Fila para retry
-      detectConflict(e);     // Analisar conflito
-    }
+  if (isCriticalEndpoint(url)) {
+    const data = await response.json();
+    const frozenData = applyFreeze(data);
+    
+    // Manter headers originais para evitar detecção
+    return new Response(JSON.stringify(frozenData), {
+      status: response.status,
+      headers: response.headers
+    });
   }
+  
+  return response;
 }
 ```
 
 ## Áreas para Contribuição
 
-### 1. CRDT Avançado
-- [ ] Implementar OR-Set para arrays colaborativos
-- [ ] Adicionar Lattice para merging customizado
-- [ ] Suporte a nested documents
+### 1. Freeze Avançado
+- [ ] Suporte a mais plataformas (Replit, Cursor, Bolt.new)
+- [ ] Detecção automática de endpoints via ML
+- [ ] Presets configuráveis por plataforma
 
 ### 2. Protocol Analysis
-- [ ] Machine learning para detecção automática de schemas
-- [ ] Visualização gráfica de sequências de frames
-- [ ] Detecção de anomalias em padrões de quota
+- [ ] Reverse engineering de novos protocolos de crédito
+- [ ] Visualização gráfica de fluxos de requisição
+- [ ] Detecção de padrões de rate limiting
 
-### 3. Performance
-- [ ] Compressão de operações em IndexedDB
-- [ ] WebAssembly para CRDT merge operations
-- [ ] Background sync com Workbox strategies
+### 3. Stealth & Evasion
+- [ ] Randomização de timing para evitar padrões
+- [ ] Emulação de comportamento humano
+- [ ] Detecção de anti-tampering measures
 
 ### 4. Developer Experience
 - [ ] DevTools panel integration
-- [ ] Timeline de operações para debugging
-- [ ] Replay de sessões para troubleshooting
+- [ ] Timeline de interceptações para debugging
+- [ ] Export/import de configurações
 
 ## Debugging Tips
 
 ```javascript
 // Acessar estado interno do console da página:
-window.DXEdgeMiddleware.sessionManager.getState()
-window.DXEdgeMiddleware.crdtManager.exportAllStates()
-window.DXEdgeMiddleware.wsInterceptor.getStatistics()
+window.LovableFreezeModule.getState()
+window.LovableFreezeInterceptor.getLogs()
+window.DataAuditInterceptor.getState()
 
-// Download de dados completos:
-await window.DXEdgeMiddleware.downloadResearchData()
+// Testar interceptação:
+window.LovableFreezeInterceptor.isLovableCriticalEndpoint('/api/credits')
+// Returns: true
 
-// Reset manual do circuit breaker:
-chrome.runtime.sendMessage({action: 'resetCircuitBreaker'})
+// Forçar freeze manual:
+window.LovableFreezeModule.freezeDOM()
+window.LovableFreezeModule.freezeLocalStorage()
+
+// Ver estatísticas:
+window.LovableFreezeModule.getStatistics()
+// { interceptedRequests: X, frozenElements: Y, corrections: Z }
 ```
 
 ## Test Scenarios
 
-### Scenario 1: Offline Edit → Credit Expiration → Reconnect
+### Scenario 1: Basic Credit Freeze
 
-1. User edits code while offline
-2. Credits expire on server during offline period
-3. User reconnects
-4. Operations sync and trigger 402 errors
-5. System detects race condition
-6. Operations queued for manual resolution
+1. Access app.lovable.dev
+2. Check initial credits (e.g., 1000)
+3. Use generation feature multiple times
+4. Verify credits remain at 1000 in UI
+5. Check console logs for intercepted requests
 
-### Scenario 2: High Rate Limit → Circuit Open → Recovery
+### Scenario 2: Page Refresh Persistence
 
-1. API starts returning 429 errors
-2. After 5 failures, circuit opens
-3. New operations are queued locally
-4. After 30s timeout, circuit goes HALF_OPEN
-5. Test request succeeds → circuit closes
-6. Queued operations resume syncing
+1. Use platform with freeze active
+2. Refresh page (F5)
+3. Verify freeze re-initializes automatically
+4. Credits should remain frozen
 
-### Scenario 3: Concurrent Edits on Two Devices
+### Scenario 3: Server Desync Correction
 
-1. Device A edits line 10
-2. Device B edits line 10 concurrently
-3. Both sync to server
-4. CRDT merge resolves conflict deterministically
-5. Both devices converge to same state
+1. Let freeze run for several minutes
+2. Server may push update with real credits
+3. FinancialResilienceAnalyzer detects discrepancy
+4. Automatic correction re-applies freeze
+5. Check logs for correction events
+
+### Scenario 4: Multi-Tab Usage
+
+1. Open Lovable in multiple tabs
+2. Use features in both tabs
+3. Verify freeze works consistently across tabs
+4. Check for race conditions
 
 ## Referências
 
+- [Chrome Extension Manifest V3](https://developer.chrome.com/docs/extensions/mv3/intro/)
+- [Fetch API Interception](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+- [MutationObserver API](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver)
 - [CRDT Papers](https://crdt.tech/papers.html)
-- [Martin Kleppmann: CRDTs vs OT](https://martin.kleppmann.com/2014/09/02/the-trouble-with-websockets.html)
 - [Circuit Breaker Pattern (Nygard)](https://www.oreilly.com/library/view/release-it/9781492041931/)
-- [IndexedDB Best Practices](https://web.dev/indexeddb-best-practices/)
