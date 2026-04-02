@@ -1,1 +1,1 @@
-Nothing should be ignored since the added files are all icon images (.png files) which are legitimate source assets that should be tracked in version control.
+(content/financial-resilience-analyzer.js is a source file, not a build artifact or dependency)
