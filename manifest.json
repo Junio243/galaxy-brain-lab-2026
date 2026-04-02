@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://*.lovable.dev/*", "https://*.lovable.com/*", "https://*.replit.com/*", "https://*.cursor.sh/*", "https://*.windsurf.ai/*", "https://*.bolt.new/*"],
-      "js": ["lib/dexie.min.js", "content/crdt-engine.js", "content/session-manager.js", "content/websocket-interceptor.js", "content/content.js"],
+      "js": ["lib/dexie.min.js", "content/crdt-engine.js", "content/session-manager.js", "content/websocket-interceptor.js", "content/http-interceptor.js", "content/react-state-freezer.js", "content/credit-check-bypass.js", "content/anti-detection.js", "content/credit-freezing-manager.js", "content/content.js"],
       "css": ["styles.css"]
     }
   ],
