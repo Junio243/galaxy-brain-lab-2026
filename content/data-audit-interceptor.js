@@ -9,6 +9,11 @@
  *   - Calcula 'exposure score' baseado em quantos identificadores são enviados
  * - Modifica respostas para sanitizar campos sensíveis antes que sejam renderizados
  * - Bloqueia requisições de tracking de uso não essenciais
+ * 
+ * LOVABLE-SPECIFIC ENHANCEMENTS:
+ * - Interceptação reforçada de endpoints do Lovable
+ * - Freeze de consumo de créditos em tempo real
+ * - Prevenção de atualizações de billing/usage
  */
 
 // Configuração dos endpoints monitorados
@@ -21,6 +26,30 @@ const MONITORED_ENDPOINTS = [
 ];
 
 const PROJECT_ENDPOINT_PATTERN = /\/api\/projects\/[^\/]+\/generate/i;
+
+// LOVABLE-SPECIFIC ENDPOINTS - Enhanced monitoring
+const LOVABLE_CRITICAL_ENDPOINTS = [
+  '/api/projects/',
+  '/api/agent',
+  '/api/chat',
+  '/api/completions',
+  '/api/usage',
+  '/api/billing',
+  '/api/credits',
+  '/api/quota',
+  '/api/billing/state',
+  '/api/usage/track',
+  '/api/preferences',
+  '/api/user/settings'
+];
+
+// Padrões específicos do Lovable para freeze de créditos
+const LOVABLE_CREDIT_PATTERNS = [
+  /\/api\/projects\/[^\/]+\/(agent|chat|generate|complete)/i,
+  /\/api\/(usage|billing|credits|quota)/i,
+  /\/api\/billing\/state/i,
+  /\/api\/usage\/track/i
+];
 
 // Campos de metadata que indicam dados pessoais
 const METADATA_FIELDS = [
@@ -326,6 +355,127 @@ async function logBlockedRequest(data) {
     console.error('[DataAudit] Error logging blocked request:', error);
   }
 }
+
+// ============================================
+// LOVABLE-SPECIFIC FREEZE FUNCTIONS
+// ============================================
+
+/**
+ * Verifica se URL é endpoint crítico do Lovable
+ * @param {string} url - URL para verificar
+ * @returns {boolean}
+ */
+function isLovableCriticalEndpoint(url) {
+  const urlLower = url.toLowerCase();
+  
+  // Verificar endpoints críticos
+  if (LOVABLE_CRITICAL_ENDPOINTS.some(endpoint => 
+    urlLower.includes(endpoint.toLowerCase())
+  )) {
+    return true;
+  }
+  
+  // Verificar padrões regex
+  if (LOVABLE_CREDIT_PATTERNS.some(pattern => pattern.test(url))) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Modifica dados de créditos em resposta JSON para freeze
+ * @param {Object} data - Dados JSON da resposta
+ * @returns {Object} - Dados modificados com créditos congelados
+ */
+function freezeCreditData(data) {
+  if (!data || typeof data !== 'object') return data;
+  
+  const frozen = JSON.parse(JSON.stringify(data)); // Deep clone
+  
+  // Campos que devem ser zerados (gasto/consumo)
+  const fieldsToZero = [
+    'credits_spent', 'creditsSpent', 'spent', 'cost',
+    'usage_cost', 'usageCost', 'tokens_used', 'tokensUsed',
+    'consumed', 'total_cost', 'totalCost'
+  ];
+  
+  // Campos que devem ser mantidos/aumentados (saldo restante)
+  const fieldsToMaintain = [
+    'credits_remaining', 'creditsRemaining', 'remaining',
+    'balance', 'quota_remaining', 'quotaRemaining',
+    'allowance_remaining', 'allowanceRemaining', 'available_credits'
+  ];
+  
+  const FAKE_CREDITS_REMAINING = 999999;
+  
+  function processFields(obj, path = '') {
+    if (!obj || typeof obj !== 'object') return;
+    
+    for (const [key, value] of Object.entries(obj)) {
+      const currentPath = path ? `${path}.${key}` : key;
+      
+      // Zerar campos de gasto
+      if (fieldsToZero.some(field => field.toLowerCase() === key.toLowerCase())) {
+        if (typeof value === 'number') {
+          obj[key] = 0;
+          console.log(`[DataAudit Freeze] Frozen ${currentPath}: ${value} → 0`);
+        }
+      }
+      
+      // Manter/aumentar campos de saldo
+      if (fieldsToMaintain.some(field => field.toLowerCase() === key.toLowerCase())) {
+        if (typeof value === 'number') {
+          obj[key] = Math.max(value, FAKE_CREDITS_REMAINING);
+          console.log(`[DataAudit Freeze] Maintained ${currentPath}: ${value} → ${obj[key]}`);
+        }
+      }
+      
+      // Processar objetos aninhados
+      if (typeof value === 'object' && value !== null) {
+        processFields(value, currentPath);
+      }
+      
+      // Processar arrays
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          if (typeof item === 'object') {
+            processFields(item, `${currentPath}[${index}]`);
+          }
+        });
+      }
+    }
+  }
+  
+  processFields(frozen);
+  return frozen;
+}
+
+/**
+ * Cria resposta fake de sucesso para erros de crédito
+ * @returns {Object} - Resposta fake com créditos ilimitados
+ */
+function createFakeCreditResponse() {
+  return {
+    success: true,
+    credits_remaining: 999999,
+    credits_spent: 0,
+    usage: { cost: 0, spent: 0 },
+    quota: { remaining: 999999, limit: 999999 },
+    billing: { status: 'active', past_due: false },
+    message: 'Credits available'
+  };
+}
+
+// Exporta funções adicionais para Lovable freeze
+window.LovableFreezeInterceptor = {
+  isLovableCriticalEndpoint,
+  freezeCreditData,
+  createFakeCreditResponse,
+  enabled: true
+};
+
+console.log('[DataAudit] Lovable freeze interceptor loaded');
 
 // Exporta funções para uso pelo content script
 window.DataAuditInterceptor = {
