@@ -6,7 +6,9 @@
  * with vector clocks for causality tracking
  */
 
-export class VectorClock {
+(function(exports) {
+
+class VectorClock {
   constructor(nodeId, initialClock = {}) {
     this.nodeId = nodeId;
     this.clock = { ...initialClock };
@@ -392,4 +394,15 @@ function generateNodeId() {
 }
 
 // Export singleton manager
-export const crdtManager = new CRDTManager(generateNodeId());
+const crdtManager = new CRDTManager(generateNodeId());
+
+// Expose to global scope for other scripts
+if (typeof window !== 'undefined') {
+  window.crdtManager = crdtManager;
+  window.VectorClock = VectorClock;
+  window.LWWRegister = LWWRegister;
+  window.CRDTDocument = CRDTDocument;
+  window.CRDTManager = CRDTManager;
+}
+
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
