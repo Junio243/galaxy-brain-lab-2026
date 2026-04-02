@@ -7,13 +7,8 @@
  * state freezing, check bypasses, and anti-detection.
  */
 
-import { httpInterceptor, HTTPResponseInterceptor } from './http-interceptor.js';
-import { wsInterceptor, WebSocketInterceptor } from './websocket-interceptor.js';
-import { reactFreezer, ReactStateFreezer } from './react-state-freezer.js';
-import { creditBypass, CreditCheckBypass } from './credit-check-bypass.js';
-import { antiDetection, AntiDetection } from './anti-detection.js';
 
-export class CreditFreezingManager {
+class CreditFreezingManager {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled !== false,
@@ -311,7 +306,7 @@ export class CreditFreezingManager {
 }
 
 // Create and export singleton instance
-export const creditFreezingManager = new CreditFreezingManager({
+const creditFreezingManager = new CreditFreezingManager({
   enabled: true,
   logOperations: false,
   fakeCreditsRemaining: 999999,
@@ -322,3 +317,5 @@ export const creditFreezingManager = new CreditFreezingManager({
 if (typeof window !== 'undefined') {
   window.CreditFreezingManager = creditFreezingManager;
 }
+window.CreditFreezingManager = CreditFreezingManager;
+window.creditFreezingManager = creditFreezingManager;

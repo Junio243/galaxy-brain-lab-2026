@@ -7,7 +7,7 @@
  * the frontend.
  */
 
-export class HTTPResponseInterceptor {
+class HTTPResponseInterceptor {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled !== false,
@@ -394,9 +394,11 @@ export class HTTPResponseInterceptor {
 }
 
 // Export singleton instance
-export const httpInterceptor = new HTTPResponseInterceptor({
+const httpInterceptor = new HTTPResponseInterceptor({
   enabled: true,
   logInterceptions: false,
   fakeCreditsRemaining: 999999,
   persistInStorage: true
 });
+window.HTTPResponseInterceptor = HTTPResponseInterceptor;
+window.httpInterceptor = httpInterceptor;

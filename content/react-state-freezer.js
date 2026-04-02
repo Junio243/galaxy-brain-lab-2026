@@ -6,7 +6,7 @@
  * credit/usage UI updates from reflecting actual consumption.
  */
 
-export class ReactStateFreezer {
+class ReactStateFreezer {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled !== false,
@@ -491,9 +491,11 @@ export class ReactStateFreezer {
 }
 
 // Export singleton instance
-export const reactFreezer = new ReactStateFreezer({
+const reactFreezer = new ReactStateFreezer({
   enabled: true,
   logOperations: false,
   fakeCreditsRemaining: 999999,
   syncInterval: 1000
 });
+window.ReactStateFreezer = ReactStateFreezer;
+window.reactFreezer = reactFreezer;

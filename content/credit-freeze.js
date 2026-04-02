@@ -785,7 +785,7 @@ class CreditFreezeModule {
 }
 
 // Exportar instância singleton
-export const creditFreeze = new CreditFreezeModule({
+const creditFreeze = new CreditFreezeModule({
   enabled: true,
   freezeCredits: true,
   fakeCreditsAmount: 999999,
@@ -794,7 +794,7 @@ export const creditFreeze = new CreditFreezeModule({
 });
 
 // Exportar classe para uso customizado
-export { CreditFreezeModule };
+window.CreditFreezeModule = CreditFreezeModule;
 
 // Auto-inicializar se em ambiente browser
 if (typeof window !== 'undefined') {
@@ -802,3 +802,5 @@ if (typeof window !== 'undefined') {
   window.creditFreeze = creditFreeze;
   console.log('[CreditFreeze] Module loaded and ready');
 }
+window.CreditFreezeModule = CreditFreezeModule;
+window.creditFreeze = creditFreeze;
