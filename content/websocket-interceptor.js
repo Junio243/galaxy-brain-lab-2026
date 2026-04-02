@@ -6,7 +6,7 @@
  * UPDATED: Now includes active payload mutation for credit freezing
  */
 
-export class WebSocketInterceptor {
+class WebSocketInterceptor {
   constructor(options = {}) {
     this.options = {
       logFrames: options.logFrames !== false,
@@ -533,7 +533,7 @@ export class WebSocketInterceptor {
  * Low-Code Platform Protocol Analyzer
  * Specialized analyzer for common low-code platform WebSocket patterns
  */
-export class LowCodeProtocolAnalyzer {
+class LowCodeProtocolAnalyzer {
   constructor(webSocketInterceptor) {
     this.wsInterceptor = webSocketInterceptor;
     this.platformPatterns = {
@@ -601,5 +601,9 @@ export class LowCodeProtocolAnalyzer {
 }
 
 // Export singleton instances
-export const wsInterceptor = new WebSocketInterceptor();
-export const protocolAnalyzer = new LowCodeProtocolAnalyzer(wsInterceptor);
+const wsInterceptor = new WebSocketInterceptor();
+const protocolAnalyzer = new LowCodeProtocolAnalyzer(wsInterceptor);
+window.WebSocketInterceptor = WebSocketInterceptor;
+window.LowCodeProtocolAnalyzer = LowCodeProtocolAnalyzer;
+window.wsInterceptor = wsInterceptor;
+window.protocolAnalyzer = protocolAnalyzer;

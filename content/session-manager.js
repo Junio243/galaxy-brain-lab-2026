@@ -218,7 +218,7 @@ class ShadowSyncDB {
  * Session Manager with optimistic concurrency control
  * Detects race conditions in credit validation scenarios
  */
-export class SessionManager {
+class SessionManager {
   constructor(options = {}) {
     this.sessionId = options.sessionId || this.generateSessionId();
     this.platform = options.platform || 'unknown';
@@ -589,3 +589,6 @@ if (typeof window !== 'undefined') {
   window.sessionManager = sessionManager;
   window.SessionManager = SessionManager;
 }
+window.ShadowSyncDB = ShadowSyncDB;
+window.SessionManager = SessionManager;
+window.sessionManager = sessionManager;

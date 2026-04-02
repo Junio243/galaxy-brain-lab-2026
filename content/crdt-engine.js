@@ -75,7 +75,7 @@ class VectorClock {
 /**
  * LWW (Last-Writer-Wins) Register for text content
  */
-export class LWWRegister {
+class LWWRegister {
   constructor(nodeId, initialValue = '', initialTimestamp = null) {
     this.nodeId = nodeId;
     this.vectorClock = new VectorClock(nodeId);
@@ -179,7 +179,7 @@ export class LWWRegister {
 /**
  * CRDT Document for multi-field state management
  */
-export class CRDTDocument {
+class CRDTDocument {
   constructor(nodeId, documentId) {
     this.nodeId = nodeId;
     this.documentId = documentId;
@@ -286,7 +286,7 @@ export class CRDTDocument {
 /**
  * CRDT Manager for handling multiple documents and sync operations
  */
-export class CRDTManager {
+class CRDTManager {
   constructor(nodeId) {
     this.nodeId = nodeId;
     this.documents = new Map();
@@ -406,3 +406,8 @@ if (typeof window !== 'undefined') {
 }
 
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));
+window.VectorClock = VectorClock;
+window.LWWRegister = LWWRegister;
+window.CRDTDocument = CRDTDocument;
+window.CRDTManager = CRDTManager;
+window.crdtManager = crdtManager;

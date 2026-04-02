@@ -6,7 +6,7 @@
  * that would block requests when credits are low or zero.
  */
 
-export class CreditCheckBypass {
+class CreditCheckBypass {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled !== false,
@@ -380,9 +380,11 @@ export class CreditCheckBypass {
 }
 
 // Export singleton instance
-export const creditBypass = new CreditCheckBypass({
+const creditBypass = new CreditCheckBypass({
   enabled: true,
   logOperations: false,
   bypassAllChecks: true,
   randomizeBehavior: true
 });
+window.CreditCheckBypass = CreditCheckBypass;
+window.creditBypass = creditBypass;

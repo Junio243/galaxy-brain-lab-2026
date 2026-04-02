@@ -1,15 +1,6 @@
 // DX Edge Middleware - Main Content Script
 // Integrates CRDT engine, Session Manager, WebSocket Interceptor, Credit Freezing, and Data Audit Interceptor
 
-import { crdtManager } from './crdt-engine.js';
-import { sessionManager } from './session-manager.js';
-import { wsInterceptor, protocolAnalyzer } from './websocket-interceptor.js';
-import { creditFreeze } from './credit-freeze.js';
-import { httpInterceptor } from './http-interceptor.js';
-import { reactFreezer } from './react-state-freezer.js';
-import { creditBypass } from './credit-check-bypass.js';
-import { antiDetection } from './anti-detection.js';
-import { creditFreezingManager } from './credit-freezing-manager.js';
 
 console.log('[DX Edge Middleware] Initializing...');
 

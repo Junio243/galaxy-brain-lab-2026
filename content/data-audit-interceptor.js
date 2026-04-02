@@ -490,3 +490,4 @@ window.DataAuditInterceptor = {
 };
 
 console.log('[DataAudit] Interceptor loaded');
+window.db = db;

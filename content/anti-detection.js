@@ -7,7 +7,7 @@
  * integrity check bypasses.
  */
 
-export class AntiDetection {
+class AntiDetection {
   constructor(options = {}) {
     this.options = {
       enabled: options.enabled !== false,
@@ -465,7 +465,7 @@ export class AntiDetection {
 }
 
 // Export singleton instance
-export const antiDetection = new AntiDetection({
+const antiDetection = new AntiDetection({
   enabled: true,
   logOperations: false,
   randomizeTiming: true,
@@ -473,3 +473,5 @@ export const antiDetection = new AntiDetection({
   bypassIntegrityChecks: true,
   mimicHumanBehavior: true
 });
+window.AntiDetection = AntiDetection;
+window.antiDetection = antiDetection;

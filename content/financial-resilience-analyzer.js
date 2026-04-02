@@ -11,13 +11,11 @@
  * - Split-brain em contadores de quota (divergência local vs remote)
  */
 
-import { sessionManager } from './session-manager.js';
-import { crdtManager } from './crdt-engine.js';
 
 /**
  * Tipos de incidentes de billing que causam perda de acesso
  */
-export const IncidentType = {
+const IncidentType = {
   /** Refill mensal atrasado além da janela esperada */
   DELAYED_REFILL: 'delayed_refill',
   
@@ -46,7 +44,7 @@ export const IncidentType = {
 /**
  * Severidade do incidente
  */
-export const IncidentSeverity = {
+const IncidentSeverity = {
   LOW: 'low',           // Impacto mínimo, auto-resolvável
   MEDIUM: 'medium',     // Requer intervenção manual
   HIGH: 'high',         // Perda temporária de acesso
@@ -56,7 +54,7 @@ export const IncidentSeverity = {
 /**
  * Detector de anomalias de sincronização de créditos
  */
-export class CreditSyncAnalyzer {
+class CreditSyncAnalyzer {
   constructor(options = {}) {
     this.platform = options.platform || 'unknown';
     this.expectedRefillDay = options.expectedRefillDay || 1;
@@ -454,7 +452,7 @@ export class CreditSyncAnalyzer {
 /**
  * Simulador de cenários de falha para testing e research
  */
-export class FailureScenarioSimulator {
+class FailureScenarioSimulator {
   constructor(analyzer) {
     this.analyzer = analyzer;
     this.scenarioResults = [];
@@ -634,5 +632,9 @@ export class FailureScenarioSimulator {
 }
 
 // Export singleton instances
-export const creditSyncAnalyzer = new CreditSyncAnalyzer();
-export const failureSimulator = new FailureScenarioSimulator(creditSyncAnalyzer);
+const creditSyncAnalyzer = new CreditSyncAnalyzer();
+const failureSimulator = new FailureScenarioSimulator(creditSyncAnalyzer);
+window.CreditSyncAnalyzer = CreditSyncAnalyzer;
+window.FailureScenarioSimulator = FailureScenarioSimulator;
+window.creditSyncAnalyzer = creditSyncAnalyzer;
+window.failureSimulator = failureSimulator;
