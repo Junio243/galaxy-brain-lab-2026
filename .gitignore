@@ -1,1 +1,28 @@
-(content/anti-detection.js, content/content.js, content/crdt-engine.js, content/credit-check-bypass.js, content/credit-freeze.js, content/credit-freezing-manager.js, content/data-audit-interceptor.js, content/financial-resilience-analyzer.js, content/http-interceptor.js, content/react-state-freezer.js, content/session-manager.js, content/websocket-interceptor.js)
+```
+# Build artifacts
+dist/
+build/
+*.bundle.js
+*.js.map
+*.min.js
+
+# Dependencies
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+```
