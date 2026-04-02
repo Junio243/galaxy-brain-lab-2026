@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Offscreen Document - AI Data Audit</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            margin: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #667eea;
+            font-size: 24px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #f5f5f5;
+            font-weight: bold;
+            color: #333;
+        }
+        .exposure-low {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .exposure-medium {
+            color: #ffeb3b;
+            font-weight: bold;
+        }
+        .exposure-high {
+            color: #f44336;
+            font-weight: bold;
+        }
+        button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 AI Data Audit - Offscreen Dashboard</h1>
+        
+        <div class="section">
+            <h2>Estatísticas em Tempo Real</h2>
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalRequests">0</div>
+                    <div class="stat-label">Requisições Monitoradas</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="blockedRequests">0</div>
+                    <div class="stat-label">Tracking Bloqueado</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="highExposureCount">0</div>
+                    <div class="stat-label">Alto Exposure</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="sensitiveDataCount">0</div>
+                    <div class="stat-label">Dados Sensíveis</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Últimas Requisições Monitoradas</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Endpoint</th>
+                        <th>Método</th>
+                        <th>Exposure Score</th>
+                        <th>Metadata</th>
+                        <th>Horário</th>
+                    </tr>
+                </thead>
+                <tbody id="requestsTable">
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #999;">Nenhuma requisição registrada</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Dados Sensíveis Detectados</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Campo</th>
+                        <th>Tipo</th>
+                        <th>URL</th>
+                        <th>Horário</th>
+                    </tr>
+                </thead>
+                <tbody id="sensitiveTable">
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: #999;">Nenhum dado sensível detectado</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <button onclick="refreshData()">🔄 Atualizar Dados</button>
+        <button onclick="exportData()" style="background: #28a745; margin-left: 10px;">📥 Exportar Relatório</button>
+    </div>
+    
+    <script src="../lib/dexie.min.js"></script>
+    <script src="offscreen.js"></script>
+</body>
+</html>
