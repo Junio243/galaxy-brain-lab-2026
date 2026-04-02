@@ -1,161 +1,154 @@
-# DX Edge Middleware - Local-First AI Code Platform
+# AI Data Audit Extension - Auditoria de Dados Pessoais em Plataformas de IA
 
-Extensão Chrome de **Developer Experience** com arquitetura avançada para plataformas de IA generativa de código.
+Extensão Chrome para **auditoria e transparência de dados pessoais** em plataformas de IA generativa. Intercepta requisições, identifica vazamento de dados (data leakage), calcula scores de exposição e protege informações sensíveis.
 
 ## 🚀 Funcionalidades Principais
 
-### Circuit Breaker Pattern
-- **Graceful degradation** quando APIs retornam erros 429 (Rate Limit) ou 402 (Payment Required/Créditos Esgotados)
-- Estados: CLOSED (normal), OPEN (falhando), HALF_OPEN (testando)
-- Métricas detalhadas para debugging e research
-- Multi-tier circuit breaker por endpoint de API
+### 🔍 Interceptação de Requisições
+- **Intercepta TODAS as requisições de saída** para identificar leakage de dados
+- Monitoramento específico para endpoints críticos:
+  - `/api/agent`
+  - `/api/chat`
+  - `/api/projects/*/generate`
+  - `/api/generate`, `/api/completion`, `/api/inference`
 
-### Local-First Architecture com CRDTs
-- **CRDT (Conflict-free Replicated Data Type)** para edição offline sem conflitos
-- **Vector Clocks** para rastreamento de causalidade
-- **LWW Registers** (Last-Writer-Wins) para merge automático de mudanças
-- Reconciliação automática quando conexão é restaurada
+### 📊 Exposure Score Calculator
+- Calcula score de 0-100 baseado em identificadores enviados:
+  - **userId/email**: +25 pontos (alto impacto)
+  - **projectId/sessionId**: +15 pontos
+  - **creditInfo/apiKey**: +20 pontos
+  - **Outros identificadores**: +10 pontos
+- Extração automática de metadata (userId, projectId, sessionId, credit info)
 
-### Shadow Syncing
-- Duplicação de estado em **IndexedDB** antes do commit ao servidor
-- Garante durabilidade dos dados mesmo se operações do servidor falharem
-- Fila de operações pendentes com retry automático
+### 🛡️ Proteção do Usuário
+- **Sanitização de respostas**: Remove campos sensíveis antes da renderização
+- Campos sanitizados: apiKey, secret, password, token, accessToken, privateKey, creditCard, ssn, cpf, cnpj
+- Substituição por `[REDACTED]` mantendo estrutura do objeto
 
-### WebSocket Interceptor para Reverse Engineering
-- Análise em tempo real de frames de controle de quota
-- Detecção automática de padrões de rate limiting
-- Identificação de plataformas low-code (Lovable, Replit, Cursor, etc.)
-- Exportação de dados para research de protocolos
+### 🚫 Bloqueio de Tracking
+- Bloqueia requisições de tracking não essenciais:
+  - Analytics (Google Analytics, Segment, Mixpanel, Amplitude)
+  - Telemetry e metrics
+  - Usage tracking
+  - Pixels e beacons
 
-### 🔥 Financial Resilience Analyzer (NOVO)
-- **Detector de Split-Brain**: Compara estados local vs remote de créditos/quota
-- **Checkpoint de Segurança**: Serializa projetos ao detectar anomalias de sincronização
-- **Análise de Padrões de Falha**: Refills atrasados, créditos não refletidos, permissões incorretas
-- **Simulador de Cenários**: Testa edge cases de sistemas distribuídos
+### 📈 Painel de Transparência
+- **"O que a plataforma sabe sobre você"**:
+  - Total de requisições monitoradas
+  - Tracking bloqueado
+  - Requisições com alto exposure score
+  - Metadata detectada em tempo real
+  - Histórico completo no IndexedDB
 
-#### Tipos de Incidentes Detectados
-| Tipo | Descrição | Severidade |
-|------|-----------|------------|
-| `delayed_refill` | Refill mensal atrasado além da janela esperada | HIGH |
-| `credit_not_reflected` | Compra via Stripe não refletida após webhook | MEDIUM |
-| `split_brain_quota` | Estado local diverge do servidor | HIGH |
-| `overquota_operation` | Operação executada que deveria estar bloqueada | CRITICAL |
-| `webhook_reconciliation_failure` | Webhook de reconciliação falhou/atrasou | LOW |
-| `offline_expiration_race` | Race condition entre expiração e operação offline | HIGH |
-| `edge_node_inconsistency` | Inconsistência entre edge nodes durante sync | MEDIUM |
-| `negative_credit_counter` | Credit counter negativo devido a async processing | CRITICAL |
-
-## 📁 Estrutura do Projeto
+## 🏗️ Arquitetura
 
 ```
 /workspace
-├── manifest.json                 # Configuração Manifest V3
+├── manifest.json                     # Manifest V3 configuration
 ├── background/
-│   ├── service-worker.js         # Service Worker com sync em background
-│   └── circuit-breaker.js        # Implementação do Circuit Breaker
+│   └── service-worker.js             # Service Worker para interceptação webRequest
 ├── content/
-│   ├── crdt-engine.js            # Motor CRDT com Vector Clocks
-│   ├── session-manager.js        # Gerenciamento de sessão + Shadow Sync
-│   ├── websocket-interceptor.js  # Interceptador e analisador WebSocket
-│   ├── financial-resilience-analyzer.js  # ⭐ Detector de credit desync
-│   └── content.js                # Script principal injetado nas páginas
+│   ├── data-audit-interceptor.js     # ⭐ Lógica principal de auditoria
+│   └── content.js                    # Content script com fetch/XHR override
+├── offscreen/
+│   ├── offscreen.html                # UI offscreen para dashboard
+│   └── offscreen.js                  # Script do offscreen document
 ├── lib/
-│   └── dexie.min.js              # Dexie.js para IndexedDB
-├── popup.html                    # Interface do popup
-├── popup.js                      # Lógica do popup
-├── styles.css                    # Estilos
-└── icons/                        # Ícones da extensão
+│   └── dexie.min.js                  # Dexie.js para IndexedDB
+├── popup.html                        # Painel de transparência
+├── popup.js                          # Lógica do popup
+├── styles.css                        # Estilos
+└── icons/                            # Ícones da extensão
 ```
 
-## 🔧 Stack Tecnológico
+### Componentes Principais
 
-- **Manifest V3** - Última versão do Chrome Extensions
-- **Dexie.js** - Wrapper moderno para IndexedDB
-- **ES6 Modules** - Modularização nativa
-- **CRDTs** - Conflict-free Replicated Data Types para consistência eventual
+#### 1. Service Worker (`background/service-worker.js`)
+- Usa `chrome.webRequest.onBeforeRequest` para interceptação
+- Bloqueia tracking requests antes do envio
+- Extrai payload e calcula exposure score
+- Armazena estatísticas no chrome.storage.local
 
-## 🎯 Casos de Uso para Research
+#### 2. Content Script (`content/data-audit-interceptor.js`)
+- Define padrões de endpoints monitorados
+- Funções utilitárias:
+  - `calculateExposureScore(payload)`
+  - `extractMetadata(payload)`
+  - `sanitizeSensitiveData(obj)`
+  - `isTrackingRequest(url)`
+  - `isMonitoredEndpoint(url)`
+- IndexedDB via Dexie para histórico persistente
 
-### 1. Reverse Engineering de Protocolos WebSocket
-A extensão intercepta e analisa frames WebSocket em tempo real:
+#### 3. Fetch Interception (`content/content.js`)
+- Override de `window.fetch()` para interceptar requisições
+- Override de `XMLHttpRequest.prototype.send()`
+- Sanitização de respostas em tempo real
+- Log de dados sensíveis detectados
+
+#### 4. Offscreen Document (`offscreen/`)
+- Dashboard persistente para visualização detalhada
+- Tabelas de requisições recentes e dados sensíveis
+- Exportação de relatórios em JSON
+
+#### 5. Popup (`popup.html`, `popup.js`)
+- Interface compacta de transparência
+- Stats em tempo real
+- Controles de configuração (toggle blocking/sanitization)
+- Visualização de última requisição e metadata
+
+## 🎯 Como Funciona
+
+### Fluxo de Interceptação
+
+1. **Requisição outgoing detectada** → Service Worker intercepta via `webRequest`
+2. **Verifica se é tracking** → Se sim, bloqueia e loga
+3. **Verifica se é endpoint monitorado** → Se sim:
+   - Extrai payload (se POST/PUT)
+   - Calcula exposure score
+   - Identifica metadata fields
+   - Salva no IndexedDB/storage
+   - Notifica popup
+4. **Content script complementa** → Override de fetch/XHR captura detalhes adicionais
+5. **Resposta incoming** → Sanitiza campos sensíveis antes do render
+
+### Cálculo do Exposure Score
 
 ```javascript
-// No console da página, após carregar a extensão:
-const data = await window.DXEdgeMiddleware.exportResearchData();
-console.log('Plataformas detectadas:', data.detectedPlatforms);
-console.log('Eventos de quota:', data.websocketAnalysis.quotaEvents);
+// Exemplo de payload
+{
+  "userId": "user123",
+  "sessionId": "sess456",
+  "message": "Hello AI",
+  "metadata": {
+    "projectId": "proj789",
+    "credits": 100
+  }
+}
+
+// Score calculation:
+// userId: +25
+// sessionId: +15
+// projectId: +15
+// credits: +20
+// Total: 75 (ALTO EXPOSURE)
 ```
 
-### 2. Identificação de Race Conditions
-Cenários onde operações offline são replicadas após expiração de créditos:
+## 📊 Uso do Painel
 
-```javascript
-// Acessar métricas de race conditions:
-const metrics = window.DXEdgeMiddleware.sessionManager.getMetrics();
-console.log('Race conditions detectadas:', metrics.raceConditionsDetected);
-console.log('Expirações durante offline:', metrics.creditExpirationsDuringOffline);
-```
+### Popup de Transparência
 
-### 3. Detecção de Split-Brain em Quota
-Comparação entre estado local e remoto de créditos:
+Ao clicar no ícone da extensão:
+- **Stats cards**: Total requests, blocked tracking, high exposure, today's count
+- **Toggles**: Ativar/desativar bloqueio de tracking e sanitização
+- **Exposure meter**: Barra visual mostrando último score
+- **Metadata list**: Lista de identificadores detectados
 
-```javascript
-// Detectar divergência manualmente:
-const divergence = window.DXEdgeMiddleware.detectSplitBrain(50, 30);
-console.log('Split-brain detectado:', divergence.detected);
-console.log('Divergência:', divergence.amount);
-```
+### Offscreen Dashboard
 
-### 4. Análise de Padrões de Falha Histórica
-Identificar problemas recorrentes de billing:
-
-```javascript
-// Analisar últimas 24 horas:
-const patterns = window.DXEdgeMiddleware.analyzeFailurePatterns({
-  start: Date.now() - 86400000,
-  end: Date.now()
-});
-console.log('Padrões de falha:', patterns);
-console.log('Issues recorrentes:', patterns.recurringIssues);
-```
-
-### 5. Simulação de Cenários de Falha
-Testar edge cases de sistemas distribuídos:
-
-```javascript
-// Executar simulações completas:
-const results = await window.DXEdgeMiddleware.runFailureSimulations();
-console.log('Cenários executados:', results.scenariosExecuted);
-console.log('Incidentes gerados:', results.incidentsGenerated);
-```
-
-### 6. Checkpoint de Segurança
-Serializar estado ao detectar anomalias:
-
-```javascript
-// Criar checkpoint manual:
-const checkpoint = window.DXEdgeMiddleware.createSafetyCheckpoint('before_deployment');
-
-// Listar checkpoints disponíveis:
-const checkpoints = window.DXEdgeMiddleware.listCheckpoints();
-
-// Restaurar de checkpoint:
-window.DXEdgeMiddleware.restoreFromCheckpoint(checkpointId);
-```
-
-## 📊 Download de Dados para Research
-
-```javascript
-// Baixar todos os dados de research como JSON:
-await window.DXEdgeMiddleware.downloadResearchData();
-```
-
-O arquivo exportado inclui:
-- Incidentes de billing detectados
-- Eventos de split-brain
-- Checkpoints de segurança
-- Padrões de falha histórica
-- Métricas combinadas de resiliência
+Para acesso ao dashboard completo (acessível via `chrome://extensions` → detalhes → offscreen):
+- Histórico completo de requisições
+- Tabela de dados sensíveis detectados
+- Exportação de relatórios
 
 ## 🔌 Instalação para Desenvolvimento
 
@@ -169,51 +162,87 @@ O arquivo exportado inclui:
 5. Ative o "Modo do desenvolvedor"
 6. Clique em "Carregar sem pacote" e selecione esta pasta
 
-## 🧪 Contribuindo
+## 🔍 Debugging
 
-Esta extensão é um projeto de research focado em:
+No console da página onde a extensão está ativa:
 
-- **Distributed Systems**: CRDTs, consistência eventual, reconciliação
-- **Edge Computing**: Processamento local, sincronização assíncrona
-- **Protocol Analysis**: Reverse engineering de APIs de plataformas low-code
-- **Resilience Patterns**: Circuit breaker, retry strategies, graceful degradation
-- **Financial Resilience**: Detecção de credit desync, split-brain, overquota operations
+```javascript
+// Acessar interceptor
+window.DataAuditInterceptor.calculateExposureScore({userId: '123', email: 'test@example.com'});
+// Returns: 50
 
-### Áreas para Contribuição
+// Ver estado atual
+window.DataAuditInterceptor.getState();
 
-1. **Financial Resilience Analyzer**
-   - Adicionar novos tipos de incidentes de billing
-   - Melhorar thresholds de detecção de anomalias
-   - Implementar recuperação automática de incidentes
-   - Integração com APIs de billing (Stripe, Paddle, Lemon Squeezy)
+// Testar se URL é monitoring endpoint
+window.DataAuditInterceptor.isMonitoredEndpoint('https://api.example.com/api/chat');
+// Returns: true
 
-2. **Melhorias no CRDT Engine**
-   - Implementar outros tipos de CRDT (G-Counter, PN-Counter, OR-Set)
-   - Otimizar merge de operações concorrentes
-   - Adicionar suporte para edição colaborativa em tempo real
+// Testar sanitização
+window.DataAuditInterceptor.sanitizeSensitiveData({
+  apiKey: 'secret123',
+  message: 'hello'
+});
+// Returns: {apiKey: '[REDACTED]', message: 'hello'}
+```
 
-3. **Análise de Protocolos**
-   - Adicionar padrões para novas plataformas
-   - Melhorar detecção de schemas de quota
-   - Criar visualizações de sequências de frames
+## 📋 Casos de Uso
 
-4. **Otimização de Shadow Sync**
-   - Compressão de dados em IndexedDB
-   - Estratégias de purge inteligente
-   - Batch operations para melhor performance
+### 1. Auditoria de Privacidade
+Verificar quais dados pessoais estão sendo enviados para APIs de IA:
+- Abrir popup após usar plataforma de IA
+- Ver exposure score das requisições
+- Identificar quais metadata fields estão vazando
 
-## 📝 Notas de Desenvolvimento
+### 2. Proteção Contra Tracking
+Bloquear automaticamente trackers não essenciais:
+- Ativar toggle "Bloquear Tracking"
+- Ver contador de requests bloqueados
+- Reduzir fingerprinting e profiling
 
-Veja `development-notes.md` para detalhes técnicos e decisões de arquitetura.
+### 3. Compliance (LGPD/GDPR)
+Gerar relatórios para auditoria de conformidade:
+- Usar offscreen dashboard
+- Exportar relatório JSON
+- Documentar fluxos de dados pessoais
 
-## ⚠️ Aviso Legal
+### 4. Pesquisa de Segurança
+Analisar padrões de leakage em diferentes plataformas:
+- Comparar exposure scores entre serviços
+- Identificar quais platforms coletam mais dados
+- Reportar práticas problemáticas
 
-Esta extensão é uma ferramenta de **research e desenvolvimento**. O uso em produção deve considerar:
+## ⚠️ Limitações
 
-- Termos de serviço das plataformas alvo
-- Políticas de uso aceitável
-- Privacidade e segurança de dados
+- **webRequest API**: Requer permissão ampla em `<all_urls>`
+- **Conteúdo criptografado**: Não consegue interceptar requisições com body criptografado customizado
+- **Service Worker lifecycle**: Pode ser terminated pelo browser quando idle
+- **CORS**: Algumas interceptações podem enfrentar restrições CORS
+
+## 🔐 Privacidade e Segurança
+
+Esta extensão:
+- ✅ **Não envia dados para terceiros** - tudo fica local no IndexedDB
+- ✅ **Código open source** - auditável publicamente
+- ✅ **Sem telemetria própria** - pratica o que prega
+- ⚠️ **Requer permissões amplas** - necessário para função de auditoria
+
+## 📝 Contribuindo
+
+Áreas para contribuição:
+1. Novos padrões de detecção de tracking
+2. Melhorias no algoritmo de exposure score
+3. Suporte a mais formatos de payload (GraphQL, gRPC-web)
+4. Integração com APIs de compliance (OneTrust, etc.)
 
 ## 📄 Licença
 
 MIT License - Veja LICENSE.txt para detalhes.
+
+## ⚖️ Aviso Legal
+
+Esta extensão é uma ferramenta de **transparência e pesquisa**. O uso deve considerar:
+- Termos de serviço das plataformas alvo
+- Políticas de uso aceitável
+- Esta extensão não contorna autenticação ou autorização
+- Use responsavelmente para auditoria pessoal e pesquisa

@@ -1,267 +1,323 @@
 /**
- * Service Worker for DX Edge Middleware
- * Handles background sync, message routing, and persistent state management
+ * Service Worker para AI Data Audit Extension
+ * Gerencia interceptação de requisições, bloqueio de tracking e sanitização de respostas
  */
 
-import { CircuitBreaker, globalCircuitBreaker } from './circuit-breaker.js';
-
-// Global state
-const state = {
-  activeSessions: new Map(),
-  syncQueue: [],
-  isSyncing: false
+// Estado global do service worker
+const auditState = {
+  enabled: true,
+  blockTracking: true,
+  sanitizeResponses: true,
+  totalRequests: 0,
+  blockedRequests: 0,
+  highExposureCount: 0
 };
+
+// Configuração dos endpoints monitorados
+const MONITORED_ENDPOINTS = [
+  '/api/agent',
+  '/api/chat',
+  '/api/generate',
+  '/api/completion',
+  '/api/inference'
+];
+
+const PROJECT_ENDPOINT_PATTERN = /\/api\/projects\/[^\/]+\/generate/i;
+
+// Campos de metadata que indicam dados pessoais
+const METADATA_FIELDS = [
+  'userId', 'user_id', 'projectId', 'project_id', 'sessionId', 'session_id',
+  'creditInfo', 'credit_info', 'credits', 'apiKey', 'api_key', 'token',
+  'email', 'username', 'accountId', 'account_id', 'organizationId', 
+  'organization_id', 'customerId', 'customer_id'
+];
+
+// Padrões de tracking não essencial
+const TRACKING_PATTERNS = [
+  '/analytics', '/tracking', '/telemetry', '/metrics', '/usage',
+  '/events', '/pixel', '/beacon', 'google-analytics', 'facebook-pixel',
+  'segment', 'mixpanel', 'amplitude'
+];
+
+// Campos sensíveis para sanitização
+const SENSITIVE_FIELDS = [
+  'apiKey', 'api_key', 'secret', 'password', 'token', 'accessToken',
+  'access_token', 'refreshToken', 'refresh_token', 'privateKey', 'private_key',
+  'creditCard', 'credit_card', 'ssn', 'cpf', 'cnpj'
+];
+
+/**
+ * Calcula o exposure score baseado nos identificadores encontrados no payload
+ */
+function calculateExposureScore(payload) {
+  let score = 0;
+  
+  function searchFields(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    
+    for (const [key, value] of Object.entries(obj)) {
+      if (METADATA_FIELDS.some(field => field.toLowerCase() === key.toLowerCase())) {
+        if (key.toLowerCase().includes('userid') || key.toLowerCase().includes('email')) {
+          score += 25;
+        } else if (key.toLowerCase().includes('projectid') || key.toLowerCase().includes('sessionid')) {
+          score += 15;
+        } else if (key.toLowerCase().includes('credit') || key.toLowerCase().includes('api')) {
+          score += 20;
+        } else {
+          score += 10;
+        }
+      }
+      
+      if (typeof value === 'object' && value !== null) {
+        searchFields(value);
+      }
+    }
+  }
+  
+  searchFields(payload);
+  return Math.min(score, 100);
+}
+
+/**
+ * Extrai metadata do payload
+ */
+function extractMetadata(payload) {
+  const metadata = {};
+  
+  function searchMetadata(obj) {
+    if (!obj || typeof obj !== 'object') return;
+    
+    for (const [key, value] of Object.entries(obj)) {
+      if (METADATA_FIELDS.some(field => field.toLowerCase() === key.toLowerCase())) {
+        metadata[key] = value;
+      }
+      if (typeof value === 'object' && value !== null) {
+        searchMetadata(value);
+      }
+    }
+  }
+  
+  searchMetadata(payload);
+  return metadata;
+}
+
+/**
+ * Sanitiza campos sensíveis em um objeto
+ */
+function sanitizeSensitiveData(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  
+  const sanitized = Array.isArray(obj) ? [] : {};
+  
+  for (const [key, value] of Object.entries(obj)) {
+    if (SENSITIVE_FIELDS.some(field => field.toLowerCase() === key.toLowerCase())) {
+      sanitized[key] = typeof value === 'string' ? '[REDACTED]' : value.constructor();
+    } else if (typeof value === 'object' && value !== null) {
+      sanitized[key] = sanitizeSensitiveData(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Verifica se uma URL é de tracking não essencial
+ */
+function isTrackingRequest(url) {
+  const lowerUrl = url.toLowerCase();
+  return TRACKING_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+}
+
+/**
+ * Verifica se um endpoint deve ser monitorado
+ */
+function isMonitoredEndpoint(url) {
+  const urlLower = url.toLowerCase();
+  
+  if (MONITORED_ENDPOINTS.some(endpoint => urlLower.includes(endpoint.toLowerCase()))) {
+    return true;
+  }
+  
+  if (PROJECT_ENDPOINT_PATTERN.test(url)) {
+    return true;
+  }
+  
+  return false;
+}
+
+// Intercepta requisições usando webRequest API
+chrome.webRequest.onBeforeRequest.addListener(
+  async (details) => {
+    // Verifica se é tracking não essencial
+    if (auditState.blockTracking && isTrackingRequest(details.url)) {
+      auditState.blockedRequests++;
+      
+      // Salva no storage
+      await chrome.storage.local.set({ lastBlocked: {
+        timestamp: Date.now(),
+        url: details.url,
+        tabId: details.tabId
+      }});
+      
+      console.log('[DataAudit] Blocked tracking request:', details.url);
+      
+      // Cancela a requisição
+      return { cancel: true };
+    }
+    
+    // Monitora endpoints específicos
+    if (isMonitoredEndpoint(details.url)) {
+      auditState.totalRequests++;
+      
+      // Tenta extrair o payload se disponível
+      let postData = null;
+      let exposureScore = 0;
+      let metadata = {};
+      
+      if (details.requestBody && details.requestBody.raw) {
+        try {
+          const decoder = new TextDecoder();
+          const rawData = details.requestBody.raw[0]?.bytes;
+          if (rawData) {
+            const rawString = decoder.decode(rawData);
+            postData = JSON.parse(rawString);
+            exposureScore = calculateExposureScore(postData);
+            metadata = extractMetadata(postData);
+            
+            if (exposureScore >= 50) {
+              auditState.highExposureCount++;
+            }
+          }
+        } catch (e) {
+          console.warn('[DataAudit] Could not parse request body:', e);
+        }
+      }
+      
+      // Salva informações da requisição
+      const requestData = {
+        timestamp: Date.now(),
+        url: details.url,
+        method: details.method,
+        exposureScore,
+        metadata,
+        tabId: details.tabId,
+        hasPostData: !!postData
+      };
+      
+      await chrome.storage.local.set({ lastMonitoredRequest: requestData });
+      
+      // Atualiza estatísticas diárias no storage
+      const today = new Date().toISOString().split('T')[0];
+      const stats = await chrome.storage.local.get(['dailyStats']);
+      const currentStats = stats.dailyStats || {};
+      
+      currentStats[today] = currentStats[today] || {
+        totalRequests: 0,
+        blockedCount: 0,
+        highExposureCount: 0
+      };
+      
+      currentStats[today].totalRequests++;
+      if (exposureScore >= 50) {
+        currentStats[today].highExposureCount++;
+      }
+      
+      await chrome.storage.local.set({ dailyStats: currentStats, auditState });
+      
+      console.log('[DataAudit] Monitored request:', details.url, 'Score:', exposureScore);
+      
+      // Notifica popup se estiver aberto
+      try {
+        chrome.runtime.sendMessage({
+          action: 'NEW_REQUEST',
+          data: requestData
+        });
+      } catch (e) {
+        // Popup pode não estar aberto
+      }
+    }
+    
+    return { cancel: false };
+  },
+  { urls: ['<all_urls>'] },
+  ['requestBody', 'extraHeaders']
+);
+
+// Intercepta respostas para sanitização
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  async (details) => {
+    // Adiciona headers para indicar que a extensão está ativa
+    if (details.type === 'xmlhttprequest' || details.type === 'fetch') {
+      return {
+        requestHeaders: [
+          ...details.requestHeaders,
+          { name: 'X-Data-Audit-Active', value: 'true' }
+        ]
+      };
+    }
+  },
+  { urls: ['<all_urls>'] },
+  ['requestHeaders', 'extraHeaders']
+);
+
+// Handle messages from popup or content scripts
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  switch (request.action) {
+    case 'GET_STATE':
+      sendResponse(auditState);
+      break;
+      
+    case 'TOGGLE_BLOCKING':
+      auditState.blockTracking = !auditState.blockTracking;
+      chrome.storage.local.set({ auditState }).then(() => {
+        sendResponse({ success: true, blockTracking: auditState.blockTracking });
+      });
+      return true; // Keep channel open for async response
+      
+    case 'TOGGLE_SANITIZATION':
+      auditState.sanitizeResponses = !auditState.sanitizeResponses;
+      chrome.storage.local.set({ auditState }).then(() => {
+        sendResponse({ success: true, sanitizeResponses: auditState.sanitizeResponses });
+      });
+      return true;
+      
+    case 'GET_STATS':
+      chrome.storage.local.get(['dailyStats']).then((result) => {
+        sendResponse({ stats: result.dailyStats, currentState: auditState });
+      });
+      return true;
+      
+    case 'CLEAR_DATA':
+      auditState.totalRequests = 0;
+      auditState.blockedRequests = 0;
+      auditState.highExposureCount = 0;
+      chrome.storage.local.clear().then(() => {
+        chrome.storage.local.set({ auditState });
+        sendResponse({ success: true });
+      });
+      return true;
+      
+    default:
+      sendResponse({ error: 'Unknown action' });
+  }
+});
 
 // Install event
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Installing DX Edge Middleware...');
+  console.log('[DataAudit] Installing...');
   event.waitUntil(
-    caches.open('dx-middleware-v1').then((cache) => {
-      return cache.addAll([
-        '/lib/dexie.min.js',
-        '/content/crdt-engine.js',
-        '/content/session-manager.js',
-        '/content/websocket-interceptor.js',
-        '/content/content.js'
-      ]);
+    caches.open('data-audit-v1').then((cache) => {
+      return cache.addAll(['/lib/dexie.min.js']);
     })
   );
 });
 
 // Activate event
 self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activated');
+  console.log('[DataAudit] Activated');
   event.waitUntil(self.clients.claim());
 });
 
-// Message handler
-self.addEventListener('message', (event) => {
-  const { action, payload } = event.data;
-  
-  switch (action) {
-    case 'INIT_SESSION':
-      handleInitSession(event.source, payload);
-      break;
-      
-    case 'SYNC_OPERATION':
-      handleSyncOperation(event.source, payload);
-      break;
-      
-    case 'GET_STATE':
-      handleGetState(event.source);
-      break;
-      
-    case 'EXPORT_DATA':
-      handleExportData(event.source);
-      break;
-      
-    case 'RESET_CIRCUIT_BREAKER':
-      handleResetCircuitBreaker(event.source, payload);
-      break;
-      
-    default:
-      console.warn('[ServiceWorker] Unknown action:', action);
-  }
-});
-
-async function handleInitSession(client, payload) {
-  const sessionId = payload.sessionId || `session-${Date.now()}`;
-  const platform = payload.platform || 'unknown';
-  
-  state.activeSessions.set(sessionId, {
-    platform,
-    createdAt: Date.now(),
-    lastActivity: Date.now(),
-    operationCount: 0
-  });
-  
-  client.postMessage({
-    type: 'SESSION_INITIALIZED',
-    sessionId,
-    platform
-  });
-}
-
-async function handleSyncOperation(client, payload) {
-  const { sessionId, operation } = payload;
-  
-  // Add to sync queue
-  state.syncQueue.push({
-    sessionId,
-    operation,
-    timestamp: Date.now(),
-    retryCount: 0
-  });
-  
-  // Update session activity
-  if (state.activeSessions.has(sessionId)) {
-    const session = state.activeSessions.get(sessionId);
-    session.lastActivity = Date.now();
-    session.operationCount++;
-  }
-  
-  // Trigger background sync if not already running
-  if (!state.isSyncing) {
-    processSyncQueue();
-  }
-  
-  client.postMessage({
-    type: 'OPERATION_QUEUED',
-    queuedCount: state.syncQueue.length
-  });
-}
-
-async function processSyncQueue() {
-  if (state.isSyncing || state.syncQueue.length === 0) {
-    return;
-  }
-  
-  state.isSyncing = true;
-  
-  while (state.syncQueue.length > 0) {
-    const item = state.syncQueue[0];
-    
-    try {
-      // Attempt to sync with server
-      const success = await attemptSync(item);
-      
-      if (success) {
-        state.syncQueue.shift();
-        
-        // Notify all clients about successful sync
-        notifyClients({
-          type: 'SYNC_SUCCESS',
-          operation: item.operation
-        });
-      } else {
-        // Increment retry count
-        item.retryCount++;
-        
-        if (item.retryCount >= 3) {
-          // Max retries reached, keep in queue but mark as failed
-          state.syncQueue.shift();
-          
-          notifyClients({
-            type: 'SYNC_FAILED',
-            operation: item.operation,
-            error: 'Max retries exceeded'
-          });
-        } else {
-          // Move to end of queue for later retry
-          state.syncQueue.shift();
-          state.syncQueue.push(item);
-        }
-      }
-    } catch (error) {
-      console.error('[ServiceWorker] Sync error:', error);
-      item.retryCount++;
-      
-      if (item.retryCount >= 3) {
-        state.syncQueue.shift();
-      }
-    }
-    
-    // Small delay between operations
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  state.isSyncing = false;
-}
-
-async function attemptSync(item) {
-  // In a real implementation, this would make actual API calls
-  // For now, simulate success/failure based on circuit breaker state
-  
-  const endpoint = `/api/sync/${item.operation.type}`;
-  
-  try {
-    const result = await globalCircuitBreaker.execute(endpoint, async () => {
-      // Simulate API call
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(item.operation)
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        error.status = response.status;
-        throw error;
-      }
-      
-      return response.json();
-    });
-    
-    return true;
-  } catch (error) {
-    console.warn('[ServiceWorker] Sync attempt failed:', error);
-    return false;
-  }
-}
-
-function handleGetState(client) {
-  client.postMessage({
-    type: 'STATE',
-    state: {
-      activeSessions: Array.from(state.activeSessions.entries()),
-      syncQueueLength: state.syncQueue.length,
-      isSyncing: state.isSyncing,
-      circuitBreakerStates: globalCircuitBreaker.getAllStates()
-    }
-  });
-}
-
-async function handleExportData(client) {
-  const exportData = {
-    timestamp: Date.now(),
-    sessions: Array.from(state.activeSessions.entries()),
-    syncQueue: state.syncQueue,
-    circuitBreakerStates: globalCircuitBreaker.getAllStates()
-  };
-  
-  client.postMessage({
-    type: 'EXPORT_DATA',
-    data: exportData
-  });
-}
-
-function handleResetCircuitBreaker(client, payload) {
-  const { endpoint } = payload;
-  
-  if (endpoint) {
-    // Reset specific endpoint
-    // Note: This would need access to the specific breaker instance
-    console.log('[ServiceWorker] Reset request for:', endpoint);
-  } else {
-    // Reset all (would need implementation in MultiCircuitBreaker)
-    console.log('[ServiceWorker] Reset all circuit breakers requested');
-  }
-  
-  client.postMessage({
-    type: 'CIRCUIT_BREAKER_RESET',
-    success: true
-  });
-}
-
-function notifyClients(message) {
-  self.clients.matchAll().then((clients) => {
-    for (const client of clients) {
-      client.postMessage(message);
-    }
-  });
-}
-
-// Periodic cleanup of inactive sessions
-setInterval(() => {
-  const now = Date.now();
-  const maxInactivity = 30 * 60 * 1000; // 30 minutes
-  
-  for (const [sessionId, session] of state.activeSessions) {
-    if (now - session.lastActivity > maxInactivity) {
-      state.activeSessions.delete(sessionId);
-      console.log('[ServiceWorker] Cleaned up inactive session:', sessionId);
-    }
-  }
-}, 5 * 60 * 1000); // Run every 5 minutes
-
-console.log('[ServiceWorker] DX Edge Middleware service worker loaded');
+console.log('[DataAudit] Service worker loaded');
