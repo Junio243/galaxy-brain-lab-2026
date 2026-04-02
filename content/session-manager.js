@@ -4,8 +4,12 @@
  * Manages optimistic concurrency and race condition detection
  */
 
-import { crdtManager } from './crdt-engine.js';
-import { CircuitBreaker, CircuitBreakerError } from '../background/circuit-breaker.js';
+// Use global crdtManager exposed by crdt-engine.js (now loaded as regular script)
+const _crdtManager = typeof window !== 'undefined' ? (window.crdtManager || null) : null;
+
+// CircuitBreaker will be available after background script loads or we define it inline
+const _CircuitBreaker = typeof window !== 'undefined' ? (window.CircuitBreaker || null) : null;
+const _CircuitBreakerError = typeof window !== 'undefined' ? (window.CircuitBreakerError || null) : null;
 
 /**
  * IndexedDB wrapper using Dexie.js patterns
@@ -219,7 +223,7 @@ export class SessionManager {
     this.sessionId = options.sessionId || this.generateSessionId();
     this.platform = options.platform || 'unknown';
     this.db = new ShadowSyncDB();
-    this.circuitBreaker = new CircuitBreaker({
+    this.circuitBreaker = new (_CircuitBreaker || (typeof CircuitBreaker !== 'undefined' ? CircuitBreaker : null))({
       failureThreshold: options.failureThreshold || 5,
       resetTimeout: options.resetTimeout || 30000
     });
@@ -295,7 +299,7 @@ export class SessionManager {
       platform: this.platform,
       state: { ...this.state },
       syncStatus: 'shadow-synced',
-      crdtState: crdtManager.exportAllStates()
+      crdtState: _crdtManager ? _crdtManager.exportAllStates() : (typeof crdtManager !== 'undefined' ? crdtManager.exportAllStates() : {})
     };
     
     try {
@@ -373,7 +377,7 @@ export class SessionManager {
   applyLocalOperation(operation) {
     // Apply operation to CRDT manager for conflict-free merging
     if (operation.documentId) {
-      crdtManager.updateDocument(operation.documentId, operation.payload);
+      _crdtManager ? _crdtManager.updateDocument.bind(_crdtManager) : (typeof crdtManager !== 'undefined' ? crdtManager.updateDocument.bind(crdtManager) : function() { console.warn('crdtManager not loaded'); })(operation.documentId, operation.payload);
     }
     
     // Update local state
@@ -572,10 +576,16 @@ export class SessionManager {
       metrics: this.getMetrics(),
       conflicts,
       circuitBreakerState: this.circuitBreaker.getStateInfo(),
-      crdtState: crdtManager.exportAllStates()
+      crdtState: _crdtManager ? _crdtManager.exportAllStates() : (typeof crdtManager !== 'undefined' ? crdtManager.exportAllStates() : {})
     };
   }
 }
 
 // Export singleton instance
-export const sessionManager = new SessionManager();
+const sessionManager = new SessionManager();
+
+// Expose to global scope
+if (typeof window !== 'undefined') {
+  window.sessionManager = sessionManager;
+  window.SessionManager = SessionManager;
+}
